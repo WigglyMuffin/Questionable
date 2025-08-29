@@ -44,12 +44,6 @@ internal sealed class EventInfoComponent
         _configuration = configuration;
     }
 
-    [SuppressMessage("ReSharper", "UnusedMember.Local")]
-    private static DateTime AtDailyReset(DateOnly date)
-    {
-        return new DateTime(date, new TimeOnly(14, 59), DateTimeKind.Utc);
-    }
-
     public bool ShouldDraw => _configuration.General.ShowIncompleteSeasonalEvents && GetActiveSeasonalQuests().Any();
 
     public void Draw()
@@ -123,19 +117,11 @@ internal sealed class EventInfoComponent
         }
     }
 
-    private bool IsIncomplete(EventQuest eventQuest)
-    {
-        if (eventQuest.EndsAtUtc <= DateTime.UtcNow)
-            return false;
-
-        return eventQuest.QuestIds.Any(ShouldShowQuest);
-    }
-
     public IEnumerable<ElementId> GetCurrentlyActiveEventQuests()
     {
-        return _eventQuests
-            .Where(x => x.EndsAtUtc >= DateTime.UtcNow)
-            .SelectMany(x => x.QuestIds)
+        return GetActiveSeasonalQuests()
+            .Where(q => q.SeasonalQuestExpiry is { } expiry && expiry >= DateTime.UtcNow)
+            .Select(q => q.QuestId)
             .Where(ShouldShowQuest);
     }
 
