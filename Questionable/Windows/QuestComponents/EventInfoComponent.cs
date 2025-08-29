@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
@@ -19,13 +19,6 @@ namespace Questionable.Windows.QuestComponents;
 
 internal sealed class EventInfoComponent
 {
-    [SuppressMessage("ReSharper", "CollectionNeverUpdated.Local")]
-    private readonly List<EventQuest> _eventQuests =
-    [
-        new EventQuest("Limited Time Items", [new UnlockLinkId(568)], DateTime.MaxValue),
-        new EventQuest("The Rising 2025", [new QuestId(5297), new QuestId(5298)], AtDailyReset(new DateOnly(2025, 9, 11))) // 11 September 2025 at 14:59 (GMT)
-    ];
-
     private readonly QuestData _questData;
     private readonly QuestRegistry _questRegistry;
     private readonly QuestFunctions _questFunctions;
