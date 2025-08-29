@@ -1,4 +1,4 @@
-﻿using Dalamud.Interface;
+using Dalamud.Interface;
 using Dalamud.Interface.Colors;
 using Dalamud.Interface.Utility.Raii;
 using Dalamud.Plugin;
@@ -212,9 +212,6 @@ internal sealed class QuestJournalComponent
             _uiUtils.ChecklistItem(string.Empty, false);
 
         ImGui.TableNextColumn();
-
-        var (color, icon, text) = _uiUtils.GetQuestStyle(questInfo.QuestId);
-        _uiUtils.ChecklistItem(text, color, icon);
 
         bool isExpired = false;
         if (questInfo.SeasonalQuestExpiry is { } expiry)
