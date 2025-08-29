@@ -541,11 +541,9 @@
           "then": {
             "properties": {
               "SeasonalQuestExpiry": {
-                "type": {
-                  "description": "If this is an seasonal (event) quest, the date and time (in UTC) when this quest should no longer be available",
-                  "format": "date-time",
-                  "type": [ "string", "null" ]
-                }
+                "description": "If this is an seasonal (event) quest, the date and time (in UTC) when this quest should no longer be available",
+                "format": "date-time",
+                "type": [ "string", "null" ]
               }
             }
           },
