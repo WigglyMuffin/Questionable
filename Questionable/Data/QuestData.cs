@@ -484,4 +484,13 @@ internal sealed class QuestData
         ];
         return startingClassQuests.SelectMany(x => x).Select(x => new QuestId(x)).ToList();
     }
+
+    public void ApplySeasonalOverride(ElementId questId, bool isSeasonal, DateTime? expiry)
+    {
+        if (_quests.TryGetValue(questId, out var info) && info is QuestInfo qi)
+        {
+            qi.IsSeasonalQuest = isSeasonal;
+            qi.SeasonalQuestExpiry = expiry;
+        }
+    }
 }

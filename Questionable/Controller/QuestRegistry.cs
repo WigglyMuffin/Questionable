@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Globalization;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Ipc;
 using Dalamud.Plugin.Services;
@@ -201,8 +202,57 @@ internal sealed class QuestRegistry
         var questNode = JsonNode.Parse(stream)!;
         _jsonSchemaValidator.Enqueue(questId, questNode);
 
+        // Parse optional seasonal override fields from the JSON before creating the Quest object.
+        bool? isSeasonalOverride = null;
+        DateTime? expiryOverride = null;
+        if (questNode is JsonObject obj)
+        {
+            if (obj.TryGetPropertyValue("IsSeasonalQuest", out var seasonalNode) && seasonalNode != null)
+            {
+                try
+                {
+                    isSeasonalOverride = seasonalNode.GetValue<bool>();
+                    _logger.LogDebug("Quest {QuestId}: parsed IsSeasonalQuest override = {IsSeasonal}", questId, isSeasonalOverride);
+                }
+                catch (Exception e)
+                {
+                    _logger.LogWarning(e, "Quest {QuestId}: failed to parse IsSeasonalQuest from JSON", questId);
+                }
+            }
+
+            if (obj.TryGetPropertyValue("SeasonalQuestExpiry", out var expiryNode) && expiryNode != null)
+            {
+                try
+                {
+                    var s = expiryNode.GetValue<string>();
+                    if (!string.IsNullOrEmpty(s))
+                    {
+                        if (DateTime.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var dt))
+                            expiryOverride = DateTime.SpecifyKind(dt, DateTimeKind.Utc);
+                        else
+                            expiryOverride = DateTime.Parse(s, null, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
+
+                        _logger.LogDebug("Quest {QuestId}: parsed SeasonalQuestExpiry override = {Expiry}", questId, expiryOverride?.ToString("o"));
+                    }
+                }
+                catch (Exception e)
+                {
+                    _logger.LogWarning(e, "Quest {QuestId}: failed to parse SeasonalQuestExpiry from JSON", questId);
+                }
+            }
+        }
+
         var questRoot = questNode.Deserialize<QuestRoot>()!;
         var questInfo = _questData.GetQuestInfo(questId);
+        // Apply overrides if present
+        if (isSeasonalOverride.HasValue || expiryOverride.HasValue)
+        {
+            var appliedIsSeasonal = isSeasonalOverride ?? questInfo.IsSeasonalQuest;
+            _logger.LogInformation("Applying seasonal override for quest {QuestId}: IsSeasonalQuest={IsSeasonal}, SeasonalQuestExpiry={Expiry}",
+                questId, appliedIsSeasonal, expiryOverride?.ToString("o") ?? "(none)");
+            _questData.ApplySeasonalOverride(questId, appliedIsSeasonal, expiryOverride);
+        }
+
         Quest quest = new Quest
         {
             Id = questId,
