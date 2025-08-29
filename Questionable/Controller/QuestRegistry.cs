@@ -36,6 +36,8 @@ internal sealed class QuestRegistry
     private readonly Dictionary<uint, (ElementId QuestId, QuestStep Step)> _contentFinderConditionIds = [];
     private readonly List<(uint ContentFinderConditionId, ElementId QuestId, int Sequence)> _lowPriorityContentFinderConditionQuests = [];
 
+    private readonly Dictionary<ElementId, string> _questFolderNames = new();
+
     public QuestRegistry(
         IDalamudPluginInterface pluginInterface,
         QuestData questData,
@@ -71,6 +73,7 @@ internal sealed class QuestRegistry
         _quests.Clear();
         _contentFinderConditionIds.Clear();
         _lowPriorityContentFinderConditionQuests.Clear();
+        _questFolderNames.Clear();
 
         LoadQuestsFromAssembly();
         LoadQuestsFromProjectDirectory();
@@ -191,7 +194,7 @@ internal sealed class QuestRegistry
         _questValidator.Validate(_quests.Values.Where(x => x.Source != Quest.ESource.Assembly).ToList());
     }
 
-    private void LoadQuestFromStream(string fileName, Stream stream, Quest.ESource source)
+    private void LoadQuestFromStream(string fileName, Stream stream, Quest.ESource source, string directoryName)
     {
         if (source == Quest.ESource.UserDirectory)
             _logger.LogTrace("Loading quest from '{FileName}'", fileName);
@@ -246,12 +249,7 @@ internal sealed class QuestRegistry
         var questInfo = _questData.GetQuestInfo(questId);
         // Apply overrides if present
         if (isSeasonalOverride.HasValue || expiryOverride.HasValue)
-        {
-            var appliedIsSeasonal = isSeasonalOverride ?? questInfo.IsSeasonalQuest;
-            _logger.LogInformation("Applying seasonal override for quest {QuestId}: IsSeasonalQuest={IsSeasonal}, SeasonalQuestExpiry={Expiry}",
-                questId, appliedIsSeasonal, expiryOverride?.ToString("o") ?? "(none)");
-            _questData.ApplySeasonalOverride(questId, appliedIsSeasonal, expiryOverride);
-        }
+            _questData.ApplySeasonalOverride(questId, isSeasonalOverride ?? questInfo.IsSeasonalQuest, expiryOverride);
 
         Quest quest = new Quest
         {
@@ -261,6 +259,9 @@ internal sealed class QuestRegistry
             Source = source,
         };
         _quests[quest.Id] = quest;
+
+        if (!string.IsNullOrEmpty(directoryName))
+            _questFolderNames[questId] = directoryName;
     }
 
     private void LoadFromDirectory(DirectoryInfo directory, Quest.ESource source,
@@ -279,7 +280,8 @@ internal sealed class QuestRegistry
             try
             {
                 using FileStream stream = new FileStream(fileInfo.FullName, FileMode.Open, FileAccess.Read);
-                LoadQuestFromStream(fileInfo.Name, stream, source);
+                // pass directory.Name as the folder (event) name
+                LoadQuestFromStream(fileInfo.Name, stream, source, directory.Name);
             }
             catch (Exception e)
             {
@@ -333,5 +335,10 @@ internal sealed class QuestRegistry
     public IEnumerable<ElementId> GetAllQuestIds()
     {
         return _quests.Keys;
+    }
+
+    public bool TryGetQuestFolderName(ElementId questId, [NotNullWhen(true)] out string? folderName)
+    {
+        return _questFolderNames.TryGetValue(questId, out folderName);
     }
 }

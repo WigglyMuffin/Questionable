@@ -48,13 +48,21 @@ internal sealed class EventInfoComponent
 
     public void Draw()
     {
-        foreach (var questInfo in GetActiveSeasonalQuests())
+        // Collect active seasonal quests and group them by the folder (event) name if available
+        var activeQuests = GetActiveSeasonalQuests().ToList();
+        var groups = activeQuests.GroupBy(q =>
         {
-            DrawEventQuest(new EventQuest(
-                questInfo.Name,
-                new List<ElementId> { questInfo.QuestId },
-                questInfo.SeasonalQuestExpiry ?? DateTime.MaxValue
-            ));
+            if (_questRegistry.TryGetQuestFolderName(q.QuestId, out var folder) && !string.IsNullOrEmpty(folder))
+                return folder!;
+            return q.Name;
+        });
+
+        foreach (var group in groups)
+        {
+            // pick the earliest expiry among group members to show as the group's expiry
+            DateTime endsAt = group.Select(q => q.SeasonalQuestExpiry ?? DateTime.MaxValue).DefaultIfEmpty(DateTime.MaxValue).Min();
+            var eventQuest = new EventQuest(group.Key, group.Select(q => q.QuestId).ToList(), endsAt);
+            DrawEventQuest(eventQuest);
         }
     }
 
