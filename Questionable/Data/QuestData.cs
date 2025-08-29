@@ -143,8 +143,8 @@ internal sealed class QuestData
                     }
                 }));
 
-        quests.Add(new UnlockLinkQuestInfo(new UnlockLinkId(506), "Patch 7.2 Fantasia", 1052475));
-        quests.Add(new UnlockLinkQuestInfo(new UnlockLinkId(568), "Patch 7.3 Fantasia", 1052475));
+        quests.Add(new UnlockLinkQuestInfo(new UnlockLinkId(506), "Patch 7.2 Fantasia", 1052475, new DateTime(2025, 8, 5, 14, 59, 59, DateTimeKind.Utc)));
+        quests.Add(new UnlockLinkQuestInfo(new UnlockLinkId(568), "Patch 7.3 Fantasia", 1052475, new DateTime(2025, 12, 23, 14, 59, 59, DateTimeKind.Utc)));
 
         _quests = quests.ToDictionary(x => x.QuestId, x => x);
 

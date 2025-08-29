@@ -60,7 +60,9 @@ internal sealed class EventInfoComponent
         foreach (var group in groups)
         {
             // pick the earliest expiry among group members to show as the group's expiry
-            DateTime endsAt = group.Select(q => q.SeasonalQuestExpiry ?? DateTime.MaxValue).DefaultIfEmpty(DateTime.MaxValue).Min();
+            DateTime endsAt = group.Select(q => (q as QuestInfo)?.SeasonalQuestExpiry ?? (q is UnlockLinkQuestInfo uli ? uli.QuestExpiry : (DateTime?)null) ?? DateTime.MaxValue)
+                                  .DefaultIfEmpty(DateTime.MaxValue)
+                                  .Min();
             var eventQuest = new EventQuest(group.Key, group.Select(q => q.QuestId).ToList(), endsAt);
             DrawEventQuest(eventQuest);
         }
@@ -128,7 +130,8 @@ internal sealed class EventInfoComponent
     public IEnumerable<ElementId> GetCurrentlyActiveEventQuests()
     {
         return GetActiveSeasonalQuests()
-            .Where(q => q.SeasonalQuestExpiry is { } expiry && expiry >= DateTime.UtcNow)
+            .Where(q => (q as QuestInfo)?.SeasonalQuestExpiry is DateTime expiry && expiry >= DateTime.UtcNow
+                     || (q is UnlockLinkQuestInfo uli && uli.QuestExpiry is DateTime uExpiry && uExpiry >= DateTime.UtcNow))
             .Select(q => q.QuestId)
             .Where(ShouldShowQuest);
     }
@@ -143,14 +146,37 @@ internal sealed class EventInfoComponent
         var allQuestIds = _questRegistry.GetAllQuestIds();
         foreach (var questId in allQuestIds)
         {
-            if (_questData.TryGetQuestInfo(questId, out var q) &&
-                q.IsSeasonalQuest &&
-                q.SeasonalQuestExpiry is { } expiry &&
-                expiry > DateTime.UtcNow &&
-                !_questFunctions.IsQuestComplete(q.QuestId) &&
-                !_questFunctions.IsQuestUnobtainable(q.QuestId))
+            if (!_questData.TryGetQuestInfo(questId, out var q))
+                continue;
+
+            if (_questFunctions.IsQuestComplete(q.QuestId) || _questFunctions.IsQuestUnobtainable(q.QuestId))
+                continue;
+
+            if (q is UnlockLinkQuestInfo uli)
             {
-                yield return q;
+                if (uli.QuestExpiry is DateTime uExpiry && uExpiry > DateTime.UtcNow)
+                {
+                    yield return q;
+                    continue;
+                }
+
+                // no future expiry -> skip
+                continue;
+            }
+
+            if (q is QuestInfo qi)
+            {
+                if (qi.SeasonalQuestExpiry is DateTime expiry && expiry > DateTime.UtcNow)
+                {
+                    yield return q;
+                    continue;
+                }
+
+                if (qi.IsSeasonalQuest && qi.SeasonalQuestExpiry is null)
+                {
+                    yield return q;
+                    continue;
+                }
             }
         }
     }
