@@ -13,6 +13,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Dalamud.Bindings.ImGui;
+using Humanizer;
 
 namespace Questionable.Windows.JournalComponents;
 
@@ -61,7 +62,7 @@ internal sealed class QuestJournalComponent
             ImGui.BulletText("'Supported' lists quests that Questionable can do for you");
             ImGui.BulletText("'Completed' lists quests your current character has completed.");
             ImGui.BulletText(
-                "Not all quests can be completed even if they're listed as available, e.g. starting city quest chains.");
+                "Not all quests can be completed even if they're listed as available, e.g. starting city quest chains or past seasonal events.");
 
             ImGui.Spacing();
             ImGui.Separator();
@@ -213,6 +214,19 @@ internal sealed class QuestJournalComponent
         ImGui.TableNextColumn();
         var (color, icon, text) = _uiUtils.GetQuestStyle(questInfo.QuestId);
         _uiUtils.ChecklistItem(text, color, icon);
+
+        if (questInfo.IsSeasonalQuest && questInfo.SeasonalQuestExpiry is { } expiry)
+        {
+            if (DateTime.UtcNow < expiry)
+            {
+                var time = (expiry - DateTime.UtcNow).Humanize(precision: 1, culture: CultureInfo.InvariantCulture);
+                ImGui.TextColored(ImGuiColors.DalamudOrange, $"Seasonal Event ({time} left)");
+            }
+            else
+            {
+                ImGui.TextColored(ImGuiColors.DalamudRed, "Event expired");
+            }
+        }
     }
 
     private static void DrawCount(int count, int total)

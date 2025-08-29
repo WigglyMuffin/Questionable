@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -279,5 +279,9 @@ internal sealed class QuestRegistry
 
         dutyOptions = null;
         return false;
+    }
+    public IEnumerable<ElementId> GetAllQuestIds()
+    {
+        return _quests.Keys;
     }
 }

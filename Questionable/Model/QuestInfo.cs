@@ -1,7 +1,8 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
+using Humanizer;
 using LLib.GameData;
 using Lumina.Excel.Sheets;
 using Questionable.Model.Questing;
@@ -13,7 +14,8 @@ namespace Questionable.Model;
 
 internal sealed class QuestInfo : IQuestInfo
 {
-    public QuestInfo(ExcelQuest quest, uint newGamePlusChapter, byte startingCity, JournalGenreOverrides journalGenreOverrides)
+    public QuestInfo(ExcelQuest quest, uint newGamePlusChapter, byte startingCity, JournalGenreOverrides journalGenreOverrides,
+        bool isSeasonalEventQuest = false, DateTime? seasonalQuestExpiry = null)
     {
         QuestId = QQuestId.FromRowId(quest.RowId);
 
@@ -75,6 +77,8 @@ internal sealed class QuestInfo : IQuestInfo
         AlliedSocietyRank = (int)quest.BeastReputationRank.RowId;
         ClassJobs = QuestInfoUtils.AsList(quest.ClassJobCategory0.ValueNullable!);
         IsSeasonalEvent = quest.Festival.RowId != 0;
+        IsSeasonalQuest = isSeasonalEventQuest;
+        SeasonalQuestExpiry = IsSeasonalQuest ? seasonalQuestExpiry : null;
         NewGamePlusChapter = newGamePlusChapter;
         StartingCity = startingCity;
         MoogleDeliveryLevel = (byte)quest.DeliveryQuest.RowId;
@@ -126,6 +130,8 @@ internal sealed class QuestInfo : IQuestInfo
     public bool IsMoogleDeliveryQuest => JournalGenre == 87;
     public IReadOnlyList<ItemReward> ItemRewards { get; }
     public EExpansionVersion Expansion { get; }
+    public DateTime? SeasonalQuestExpiry { get; }
+    public bool IsSeasonalQuest { get; }
 
     public void AddPreviousQuest(PreviousQuestInfo questId)
     {

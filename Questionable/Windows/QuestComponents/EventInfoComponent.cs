@@ -57,14 +57,17 @@ internal sealed class EventInfoComponent
         return new DateTime(date, new TimeOnly(14, 59), DateTimeKind.Utc);
     }
 
-    public bool ShouldDraw => _configuration.General.ShowIncompleteSeasonalEvents && _eventQuests.Any(IsIncomplete);
+    public bool ShouldDraw => _configuration.General.ShowIncompleteSeasonalEvents && GetActiveSeasonalQuests().Any();
 
     public void Draw()
     {
-        foreach (var eventQuest in _eventQuests)
+        foreach (var questInfo in GetActiveSeasonalQuests())
         {
-            if (IsIncomplete(eventQuest))
-                DrawEventQuest(eventQuest);
+            DrawEventQuest(new EventQuest(
+                questInfo.Name,
+                new List<ElementId> { questInfo.QuestId },
+                questInfo.SeasonalQuestExpiry ?? DateTime.MaxValue
+            ));
         }
     }
 
@@ -147,4 +150,21 @@ internal sealed class EventInfoComponent
                                                          !_questFunctions.IsQuestUnobtainable(elementId);
 
     private sealed record EventQuest(string Name, List<ElementId> QuestIds, DateTime EndsAtUtc);
+
+    private IEnumerable<IQuestInfo> GetActiveSeasonalQuests()
+    {
+        var allQuestIds = _questRegistry.GetAllQuestIds();
+        foreach (var questId in allQuestIds)
+        {
+            if (_questData.TryGetQuestInfo(questId, out var q) &&
+                q.IsSeasonalQuest &&
+                q.SeasonalQuestExpiry is { } expiry &&
+                expiry > DateTime.UtcNow &&
+                !_questFunctions.IsQuestComplete(q.QuestId) &&
+                !_questFunctions.IsQuestUnobtainable(q.QuestId))
+            {
+                yield return q;
+            }
+        }
+    }
 }

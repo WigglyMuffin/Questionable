@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
@@ -722,6 +722,9 @@ internal sealed unsafe class QuestFunctions
         }
 
         if (_questData.GetUnobtainableEventQuests().Contains(questId))
+            return true;
+
+        if (questInfo.IsSeasonalEvent && questInfo.SeasonalQuestExpiry is { } expiry && DateTime.UtcNow > expiry)
             return true;
 
         if (_questData.GetLockedClassQuests().Contains(questId))
