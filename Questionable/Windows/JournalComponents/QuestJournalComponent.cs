@@ -212,20 +212,25 @@ internal sealed class QuestJournalComponent
             _uiUtils.ChecklistItem(string.Empty, false);
 
         ImGui.TableNextColumn();
+
         var (color, icon, text) = _uiUtils.GetQuestStyle(questInfo.QuestId);
         _uiUtils.ChecklistItem(text, color, icon);
 
-        if (questInfo.IsSeasonalQuest && questInfo.SeasonalQuestExpiry is { } expiry)
+        bool isExpired = false;
+        if (questInfo.SeasonalQuestExpiry is { } expiry)
         {
-            if (DateTime.UtcNow < expiry)
-            {
-                var time = (expiry - DateTime.UtcNow).Humanize(precision: 1, culture: CultureInfo.InvariantCulture);
-                ImGui.TextColored(ImGuiColors.DalamudOrange, $"Seasonal Event ({time} left)");
-            }
-            else
-            {
-                ImGui.TextColored(ImGuiColors.DalamudRed, "Event expired");
-            }
+            DateTime expiryUtc = expiry.Kind == DateTimeKind.Utc ? expiry : expiry.ToUniversalTime();
+            if (DateTime.UtcNow > expiryUtc)
+                isExpired = true;
+        }
+
+        if (isExpired)
+        {
+            _uiUtils.ChecklistItem("Unavailable", ImGuiColors.DalamudGrey, FontAwesomeIcon.Minus);
+        }
+        else
+        {
+            _uiUtils.ChecklistItem("Available", ImGuiColors.DalamudYellow, FontAwesomeIcon.Running);
         }
     }
 
