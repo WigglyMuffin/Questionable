@@ -15,6 +15,7 @@ using FFXIVClientStructs.FFXIV.Component.GUI;
 using LLib.GameData;
 using LLib.GameUI;
 using Lumina.Excel.Sheets;
+using Microsoft.Extensions.Logging;
 using Questionable.Controller;
 using Questionable.Data;
 using Questionable.Model;
@@ -37,6 +38,9 @@ internal sealed unsafe class QuestFunctions
     private readonly IClientState _clientState;
     private readonly IGameGui _gameGui;
     private readonly IAetheryteList _aetheryteList;
+    private readonly ILogger<QuestFunctions> _logger;
+
+    private readonly HashSet<ushort> _alreadyLoggedUnobtainableQuests = new();
 
     public QuestFunctions(
         QuestRegistry questRegistry,
@@ -48,7 +52,8 @@ internal sealed unsafe class QuestFunctions
         IDataManager dataManager,
         IClientState clientState,
         IGameGui gameGui,
-        IAetheryteList aetheryteList)
+        IAetheryteList aetheryteList,
+        ILogger<QuestFunctions> logger)
     {
         _questRegistry = questRegistry;
         _questData = questData;
@@ -60,6 +65,7 @@ internal sealed unsafe class QuestFunctions
         _clientState = clientState;
         _gameGui = gameGui;
         _aetheryteList = aetheryteList;
+        _logger = logger;
     }
 
     public QuestReference GetCurrentQuest(bool allowNewMsq = true)
@@ -721,11 +727,36 @@ internal sealed unsafe class QuestFunctions
                 return true;
         }
 
-        if (_questData.GetUnobtainableEventQuests().Contains(questId))
-            return true;
+        // treat expiry alone as authoritative
+        if (questInfo.SeasonalQuestExpiry is DateTime expiryValue)
+        {
+            DateTime expiryUtc = expiryValue.Kind == DateTimeKind.Utc ? expiryValue : expiryValue.ToUniversalTime();
+            if (DateTime.UtcNow > expiryUtc)
+            {
+                if (_alreadyLoggedUnobtainableQuests.Add(questId.Value))
+                {
+                    _logger.LogDebug("Quest {QuestId} unobtainable: seasonal expiry {ExpiryUtc} (UTC) is before now {NowUtc}",
+                        questId, expiryUtc.ToString("o"), DateTime.UtcNow.ToString("o"));
+                }
 
-        if (questInfo.IsSeasonalEvent && questInfo.SeasonalQuestExpiry is { } expiry && DateTime.UtcNow > expiry)
-            return true;
+                return true;
+            }
+        }
+
+        // Seasonal handling: if a quest is flagged seasonal and has no expiry, fall back to user preference.
+        if (questInfo.IsSeasonalQuest)
+        {
+            if (questInfo.SeasonalQuestExpiry is DateTime)
+            {
+                // expiry already handled above; not expired - allow
+            }
+            else
+            {
+                // No expiry provided: fall back to user preference whether to show incomplete seasonal events.
+                if (!_configuration.General.ShowIncompleteSeasonalEvents)
+                    return true;
+            }
+        }
 
         if (_questData.GetLockedClassQuests().Contains(questId))
             return true;
