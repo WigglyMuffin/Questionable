@@ -110,11 +110,18 @@ internal sealed class StopConditionComponent : ConfigComponent
             // 'Clear All' button if there are quests to clear for fast removal
             if (questsToStopAfter.Count > 0)
             {
-                if (ImGuiComponents.IconButtonWithText(FontAwesomeIcon.Trash, "Clear All"))
+                using (ImRaii.Disabled(!ImGui.IsKeyDown(ImGuiKey.ModCtrl)))
                 {
-                    Configuration.Stop.QuestsToStopAfter.Clear();
-                    Save();
+                    if (ImGuiComponents.IconButtonWithText(FontAwesomeIcon.Trash, "Clear All"))
+                    {
+                        Configuration.Stop.QuestsToStopAfter.Clear();
+                        Save();
+                    }
                 }
+
+                if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                    ImGui.SetTooltip("Hold CTRL to enable this button.");
+
                 ImGui.Separator();
             }
 
