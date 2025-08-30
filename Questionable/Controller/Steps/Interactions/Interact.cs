@@ -18,7 +18,7 @@ namespace Questionable.Controller.Steps.Interactions;
 
 internal static class Interact
 {
-    internal sealed class Factory(AutomatonIpc automatonIpc) : ITaskFactory
+    internal sealed class Factory(AutomatonIpc automatonIpc, Configuration configuration) : ITaskFactory
     {
         public IEnumerable<ITask> CreateAllTasks(Quest quest, QuestSequence sequence, QuestStep step)
         {
@@ -26,7 +26,7 @@ internal static class Interact
                 or EInteractionType.SinglePlayerDuty)
             {
                 // 'PreventQuestCompletion' config check
-                if (step.InteractionType is EInteractionType.CompleteQuest)
+                if (step.InteractionType is EInteractionType.CompleteQuest && configuration.Advanced.PreventQuestCompletion)
                 {
                     yield break;
                 }
