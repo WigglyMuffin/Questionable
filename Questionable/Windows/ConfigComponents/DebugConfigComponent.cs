@@ -128,7 +128,7 @@ internal sealed class DebugConfigComponent : ConfigComponent
             }
 
             ImGui.SameLine();
-            ImGuiComponents.HelpMarker("When enabled, Questionable will not attempt to complete quests. This allows you to do everything except the final turn-in step manually.");
+            ImGuiComponents.HelpMarker("When enabled, Questionable will not attempt to turn-in and complete quests. This will do everything automatically except the final turn-in step.");
         }
     }
 }
