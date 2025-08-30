@@ -81,13 +81,26 @@ internal sealed class EventInfoComponent
                 ?? DateTime.MaxValue)
                                   .DefaultIfEmpty(DateTime.MaxValue)
                                   .Min();
-            var eventQuest = new EventQuest(group.Key, group.Select(q => q.QuestId).ToList(), endsAt);
+
+            // If all unlock-link quests in the group share the same patch, surface it for display
+            var patches = group
+                .Select(q => (q as UnlockLinkQuestInfo)?.Patch)
+                .Where(p => !string.IsNullOrEmpty(p))
+                .Distinct()
+                .ToList();
+            string? patch = patches.Count == 1 ? patches[0] : null;
+
+            var eventQuest = new EventQuest(group.Key, group.Select(q => q.QuestId).ToList(), endsAt, patch);
             DrawEventQuest(eventQuest);
         }
     }
 
     private void DrawEventQuest(EventQuest eventQuest)
     {
+        string displayName = eventQuest.Name;
+        if (!string.IsNullOrEmpty(eventQuest.Patch))
+            displayName = $"{displayName} [{eventQuest.Patch}]";
+
         if (eventQuest.EndsAtUtc != DateTime.MaxValue)
         {
             string time = (eventQuest.EndsAtUtc - DateTime.UtcNow).Humanize(
@@ -95,10 +108,10 @@ internal sealed class EventInfoComponent
                 culture: CultureInfo.InvariantCulture,
                 minUnit: TimeUnit.Minute,
                 maxUnit: TimeUnit.Day);
-            ImGui.Text($"{eventQuest.Name} ({time})");
+            ImGui.Text($"{displayName} ({time})");
         }
         else
-            ImGui.Text(eventQuest.Name);
+            ImGui.Text(displayName);
 
         List<ElementId> startableQuests = eventQuest.QuestIds.Where(x =>
                 _questRegistry.IsKnownQuest(x) &&
@@ -159,7 +172,7 @@ internal sealed class EventInfoComponent
     private bool ShouldShowQuest(ElementId elementId) => !_questFunctions.IsQuestComplete(elementId) &&
                                                          !_questFunctions.IsQuestUnobtainable(elementId);
 
-    private sealed record EventQuest(string Name, List<ElementId> QuestIds, DateTime EndsAtUtc);
+    private sealed record EventQuest(string Name, List<ElementId> QuestIds, DateTime EndsAtUtc, string? Patch);
 
     // Replaced original GetActiveSeasonalQuests with cached implementation that refreshes occasionally.
     private IEnumerable<IQuestInfo> GetActiveSeasonalQuestsNoCache()
