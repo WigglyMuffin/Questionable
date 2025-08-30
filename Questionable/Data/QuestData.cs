@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
@@ -143,8 +143,8 @@ internal sealed class QuestData
                     }
                 }));
 
-        quests.Add(new UnlockLinkQuestInfo(new UnlockLinkId(506), "Patch 7.2 Fantasia", 1052475));
-        quests.Add(new UnlockLinkQuestInfo(new UnlockLinkId(568), "Patch 7.3 Fantasia", 1052475));
+        quests.Add(new UnlockLinkQuestInfo(new UnlockLinkId(506), "Fantasia", 1052475, new DateTime(2025, 8, 5, 14, 59, 59, DateTimeKind.Utc), "Patch 7.2"));
+        quests.Add(new UnlockLinkQuestInfo(new UnlockLinkId(568), "Fantasia", 1052475, new DateTime(2025, 12, 23, 14, 59, 59, DateTimeKind.Utc), "Patch 7.3"));
 
         _quests = quests.ToDictionary(x => x.QuestId, x => x);
 
@@ -333,7 +333,6 @@ internal sealed class QuestData
     public List<IQuestInfo> GetAllByJournalGenre(uint journalGenre)
     {
         return _quests.Values
-            .Where(x => x is QuestInfo { IsSeasonalEvent: false } or not QuestInfo)
             .Where(x => x.JournalGenre == journalGenre)
             .OrderBy(x => x.SortKey)
             .ThenBy(x => x.QuestId)
@@ -484,5 +483,14 @@ internal sealed class QuestData
             startingClass == EClassJob.Arcanist ? [451, 452, 454, 457] : [453, 456],
         ];
         return startingClassQuests.SelectMany(x => x).Select(x => new QuestId(x)).ToList();
+    }
+
+    public void ApplySeasonalOverride(ElementId questId, bool isSeasonal, DateTime? expiry)
+    {
+        if (_quests.TryGetValue(questId, out var info) && info is QuestInfo qi)
+        {
+            qi.IsSeasonalQuest = isSeasonal;
+            qi.SeasonalQuestExpiry = expiry;
+        }
     }
 }

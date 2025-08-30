@@ -26,6 +26,15 @@
       "type": "boolean",
       "description": "If set to false, no priority quest (e.g. class quests) will be done while this is the currently active quest"
     },
+    "IsSeasonalQuest": {
+      "type": "boolean",
+      "description": "Set to true if this is an event quest (e.g. seasonal event)"
+    },
+    "SeasonalQuestExpiry": {
+      "description": "If this is an seasonal (event) quest, the date and time (in UTC) when this quest should no longer be available",
+      "format": "date-time",
+      "type": [ "string", "null" ]
+    },
     "Comment": {
       "type": "string"
     },
@@ -521,6 +530,31 @@
         "InteractionType"
       ],
       "allOf": [
+        {
+          "if": {
+            "properties": {
+              "IsSeasonalQuest": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "SeasonalQuestExpiry": {
+                "description": "If this is an seasonal (event) quest, the date and time (in UTC) when this quest should no longer be available",
+                "format": "date-time",
+                "type": [ "string", "null" ]
+              }
+            }
+          },
+          "else": {
+            "not": {
+              "required": [
+                "SeasonalQuestExpiry"
+              ]
+            }
+          }
+        },
         {
           "if": {
             "properties": {

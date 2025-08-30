@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
@@ -19,13 +19,6 @@ namespace Questionable.Windows.QuestComponents;
 
 internal sealed class EventInfoComponent
 {
-    [SuppressMessage("ReSharper", "CollectionNeverUpdated.Local")]
-    private readonly List<EventQuest> _eventQuests =
-    [
-        new EventQuest("Limited Time Items", [new UnlockLinkId(568)], DateTime.MaxValue),
-        new EventQuest("The Rising 2025", [new QuestId(5297), new QuestId(5298)], AtDailyReset(new DateOnly(2025, 9, 11))) // 11 September 2025 at 14:59 (GMT)
-    ];
-
     private readonly QuestData _questData;
     private readonly QuestRegistry _questRegistry;
     private readonly QuestFunctions _questFunctions;
@@ -33,6 +26,10 @@ internal sealed class EventInfoComponent
     private readonly QuestController _questController;
     private readonly QuestTooltipComponent _questTooltipComponent;
     private readonly Configuration _configuration;
+
+    private List<IQuestInfo> _cachedActiveSeasonalQuests = new();
+    private DateTime _cachedAtUtc = DateTime.MinValue;
+    private readonly TimeSpan _cacheDuration = TimeSpan.FromSeconds(5);
 
     public EventInfoComponent(QuestData questData,
         QuestRegistry questRegistry,
@@ -51,25 +48,59 @@ internal sealed class EventInfoComponent
         _configuration = configuration;
     }
 
-    [SuppressMessage("ReSharper", "UnusedMember.Local")]
-    private static DateTime AtDailyReset(DateOnly date)
+    public bool ShouldDraw
     {
-        return new DateTime(date, new TimeOnly(14, 59), DateTimeKind.Utc);
+        get
+        {
+            if (!_configuration.General.ShowIncompleteSeasonalEvents)
+                return false;
+            UpdateCacheIfNeeded();
+            return _cachedActiveSeasonalQuests.Count > 0;
+        }
     }
-
-    public bool ShouldDraw => _configuration.General.ShowIncompleteSeasonalEvents && _eventQuests.Any(IsIncomplete);
 
     public void Draw()
     {
-        foreach (var eventQuest in _eventQuests)
+        UpdateCacheIfNeeded();
+
+        // Collect active seasonal quests and group them by the folder (event) name if available
+        var activeQuests = _cachedActiveSeasonalQuests;
+        var groups = activeQuests.GroupBy(q =>
         {
-            if (IsIncomplete(eventQuest))
-                DrawEventQuest(eventQuest);
+            if (_questRegistry.TryGetQuestFolderName(q.QuestId, out var folder) && !string.IsNullOrEmpty(folder))
+                return folder!;
+            return q.Name;
+        });
+
+        foreach (var group in groups)
+        {
+            // pick the earliest expiry among group members to show as the group's expiry
+            DateTime endsAt = group.Select(q =>
+                (q as QuestInfo)?.SeasonalQuestExpiry
+                ?? (q is UnlockLinkQuestInfo uli ? uli.QuestExpiry : (DateTime?)null)
+                ?? DateTime.MaxValue)
+                                  .DefaultIfEmpty(DateTime.MaxValue)
+                                  .Min();
+
+            // If all unlock-link quests in the group share the same patch, surface it for display
+            var patches = group
+                .Select(q => (q as UnlockLinkQuestInfo)?.Patch)
+                .Where(p => !string.IsNullOrEmpty(p))
+                .Distinct()
+                .ToList();
+            string? patch = patches.Count == 1 ? patches[0] : null;
+
+            var eventQuest = new EventQuest(group.Key, group.Select(q => q.QuestId).ToList(), endsAt, patch);
+            DrawEventQuest(eventQuest);
         }
     }
 
     private void DrawEventQuest(EventQuest eventQuest)
     {
+        string displayName = eventQuest.Name;
+        if (!string.IsNullOrEmpty(eventQuest.Patch))
+            displayName = $"{displayName} [{eventQuest.Patch}]";
+
         if (eventQuest.EndsAtUtc != DateTime.MaxValue)
         {
             string time = (eventQuest.EndsAtUtc - DateTime.UtcNow).Humanize(
@@ -77,10 +108,10 @@ internal sealed class EventInfoComponent
                 culture: CultureInfo.InvariantCulture,
                 minUnit: TimeUnit.Minute,
                 maxUnit: TimeUnit.Day);
-            ImGui.Text($"{eventQuest.Name} ({time})");
+            ImGui.Text($"{displayName} ({time})");
         }
         else
-            ImGui.Text(eventQuest.Name);
+            ImGui.Text(displayName);
 
         List<ElementId> startableQuests = eventQuest.QuestIds.Where(x =>
                 _questRegistry.IsKnownQuest(x) &&
@@ -127,24 +158,71 @@ internal sealed class EventInfoComponent
         }
     }
 
-    private bool IsIncomplete(EventQuest eventQuest)
-    {
-        if (eventQuest.EndsAtUtc <= DateTime.UtcNow)
-            return false;
-
-        return eventQuest.QuestIds.Any(ShouldShowQuest);
-    }
-
     public IEnumerable<ElementId> GetCurrentlyActiveEventQuests()
     {
-        return _eventQuests
-            .Where(x => x.EndsAtUtc >= DateTime.UtcNow)
-            .SelectMany(x => x.QuestIds)
+        UpdateCacheIfNeeded();
+
+        return _cachedActiveSeasonalQuests
+            .Where(q => (q as QuestInfo)?.SeasonalQuestExpiry is DateTime expiry && expiry >= DateTime.UtcNow
+                     || (q is UnlockLinkQuestInfo uli && uli.QuestExpiry is DateTime uExpiry && uExpiry >= DateTime.UtcNow))
+            .Select(q => q.QuestId)
             .Where(ShouldShowQuest);
     }
 
     private bool ShouldShowQuest(ElementId elementId) => !_questFunctions.IsQuestComplete(elementId) &&
                                                          !_questFunctions.IsQuestUnobtainable(elementId);
 
-    private sealed record EventQuest(string Name, List<ElementId> QuestIds, DateTime EndsAtUtc);
+    private sealed record EventQuest(string Name, List<ElementId> QuestIds, DateTime EndsAtUtc, string? Patch);
+
+    // Replaced original GetActiveSeasonalQuests with cached implementation that refreshes occasionally.
+    private IEnumerable<IQuestInfo> GetActiveSeasonalQuestsNoCache()
+    {
+        // Only refresh the minimal set: iterate over known quest ids once per refresh interval.
+        var allQuestIds = _questRegistry.GetAllQuestIds();
+        foreach (var questId in allQuestIds)
+        {
+            if (!_questData.TryGetQuestInfo(questId, out var q))
+                continue;
+
+            if (_questFunctions.IsQuestComplete(q.QuestId) || _questFunctions.IsQuestUnobtainable(q.QuestId))
+                continue;
+
+            if (q is UnlockLinkQuestInfo uli)
+            {
+                if (uli.QuestExpiry is DateTime uExpiry && uExpiry > DateTime.UtcNow)
+                {
+                    yield return q;
+                    continue;
+                }
+
+                // no future expiry -> skip
+                continue;
+            }
+
+            if (q is QuestInfo qi)
+            {
+                if (qi.SeasonalQuestExpiry is DateTime expiry && expiry > DateTime.UtcNow)
+                {
+                    yield return q;
+                    continue;
+                }
+
+                if (qi.IsSeasonalQuest && qi.SeasonalQuestExpiry is null)
+                {
+                    yield return q;
+                    continue;
+                }
+            }
+        }
+    }
+
+    private void UpdateCacheIfNeeded()
+    {
+        if (DateTime.UtcNow - _cachedAtUtc < _cacheDuration)
+            return;
+
+        // Refresh cache
+        _cachedActiveSeasonalQuests = GetActiveSeasonalQuestsNoCache().ToList();
+        _cachedAtUtc = DateTime.UtcNow;
+    }
 }
