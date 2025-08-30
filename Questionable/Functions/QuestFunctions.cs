@@ -718,6 +718,27 @@ internal sealed unsafe class QuestFunctions
         if (questInfo.Expansion > (EExpansionVersion)PlayerState.Instance()->MaxExpansion)
             return true;
 
+        // If journal genre is between 234 and 247 (inclusive) it's an event/seasonal quest.
+        // Only treat it as unobtainable if the quest has no quest path in the registry.
+        if (questInfo.JournalGenre >= 234 && questInfo.JournalGenre <= 247)
+        {
+            var hasPath = _questRegistry.TryGetQuest(questId, out Quest? q) &&
+                          q?.Root?.QuestSequence is { Count: > 0 };
+
+            if (!hasPath)
+            {
+                if (_alreadyLoggedUnobtainableQuests.Add(questId.Value))
+                {
+                    _questData.ApplySeasonalOverride(questId, true, null);
+                    _logger.LogDebug("Quest {QuestId} unobtainable: journal genre is 'event (seasonal)' and no quest path", questId);
+                    _logger.LogDebug("QuestInfo Genre is {JournalGenre}, Expansion is {Expansion}, StartingCity is {StartingCity}",
+                        questInfo.JournalGenre, questInfo.Expansion, questInfo.StartingCity);
+                }
+
+                return true;
+            }
+        }
+
         if (questInfo.QuestLocks.Count > 0)
         {
             var completedQuests = questInfo.QuestLocks.Count(x => IsQuestComplete(x) || x.Equals(extraCompletedQuest));

@@ -34,6 +34,8 @@ internal sealed class QuestJournalComponent
     private readonly Configuration _configuration;
     private readonly ILogger<QuestJournalComponent> _logger;
 
+    private const uint SeasonalJournalCategoryRowId = 96;
+
     private List<FilteredSection> _filteredSections = new();
     private bool _lastHideSeasonalGlobally;
 
@@ -229,6 +231,7 @@ internal sealed class QuestJournalComponent
         ImGui.TableNextColumn();
 
         bool isExpired = false;
+        bool isUnobtainable = _questFunctions.IsQuestUnobtainable(questInfo.QuestId);
         if (questInfo.SeasonalQuestExpiry is { } expiry)
         {
             DateTime expiryUtc = expiry.Kind == DateTimeKind.Utc ? expiry : expiry.ToUniversalTime();
@@ -236,7 +239,7 @@ internal sealed class QuestJournalComponent
                 isExpired = true;
         }
 
-        if (isExpired)
+        if (isExpired || isUnobtainable)
         {
             _uiUtils.ChecklistItem("Unobtainable", ImGuiColors.DalamudGrey, FontAwesomeIcon.Minus);
         }
@@ -279,14 +282,20 @@ internal sealed class QuestJournalComponent
     private FilteredSection FilterSection(JournalData.Section section, FilterConfiguration filter)
     {
         IEnumerable<FilteredCategory> filteredCategories;
+        var hideSeasonalGlobally = _configuration.General.HideSeasonalEventsFromJournalProgress;
+
+        var categoriesToProcess = hideSeasonalGlobally
+            ? section.Categories.Where(c => c.Id != SeasonalJournalCategoryRowId)
+            : section.Categories;
+
         if (IsCategorySectionGenreMatch(filter, section.Name))
         {
-            filteredCategories = section.Categories
+            filteredCategories = categoriesToProcess
                 .Select(x => FilterCategory(x, filter.WithoutName(), section));
         }
         else
         {
-            filteredCategories = section.Categories
+            filteredCategories = categoriesToProcess
                 .Select(category => FilterCategory(category, filter, section));
         }
 
@@ -326,7 +335,7 @@ internal sealed class QuestJournalComponent
                 .Where(x => IsQuestMatch(filter, x));
         }
 
-        if (hideSeasonalGlobally)
+        if (hideSeasonalGlobally && genre.CategoryId == SeasonalJournalCategoryRowId)
             filteredQuests = filteredQuests.Where(q => !IsSeasonal(q));
 
         return new FilteredGenre(genre, filteredQuests.ToList());
@@ -343,7 +352,7 @@ internal sealed class QuestJournalComponent
 
         foreach (var genre in _journalData.Genres)
         {
-            var relevantQuests = hideSeasonalGlobally
+            var relevantQuests = hideSeasonalGlobally && genre.CategoryId == SeasonalJournalCategoryRowId
                 ? genre.Quests.Where(q => !IsSeasonal(q)).ToList()
                 : genre.Quests.ToList();
 
@@ -359,6 +368,10 @@ internal sealed class QuestJournalComponent
 
         foreach (var category in _journalData.Categories)
         {
+            // If the option is enabled, skip adding the target JournalCategory row (96) entirely so it doesn't contribute to category/section totals.
+            if (hideSeasonalGlobally && category.Id == SeasonalJournalCategoryRowId)
+                continue;
+
             var counts = _genre_counts_or_default(category);
             int available = counts.Sum(x => x.Available);
             int total = counts.Sum(x => x.Total);
@@ -417,9 +430,6 @@ internal sealed class QuestJournalComponent
         if (!string.IsNullOrEmpty(filter.SearchText) &&
             !(questInfo.Name.Contains(filter.SearchText, StringComparison.CurrentCultureIgnoreCase) || questInfo.QuestId.ToString() == filter.SearchText))
             return false;
-
-        // Note: seasonal hiding is only performed for the "Other Quests" section previously.
-        // We now perform global hiding only when the configuration requests it, so do not filter here.
 
         if (filter.AvailableOnly && !_questFunctions.IsReadyToAcceptQuest(questInfo.QuestId))
             return false;
