@@ -71,6 +71,7 @@ internal sealed class Configuration : IPluginConfiguration
 
         public HashSet<uint> WhitelistedSinglePlayerDutyCfcIds { get; set; } = [];
         public HashSet<uint> BlacklistedSinglePlayerDutyCfcIds { get; set; } = [];
+        public Dictionary<string, bool> HeaderStates { get; set; } = [];
     }
 
     internal sealed class NotificationConfiguration
