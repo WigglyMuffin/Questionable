@@ -41,7 +41,7 @@ internal sealed class Configuration : IPluginConfiguration
         public bool ShowIncompleteSeasonalEvents { get; set; } = true;
         public bool SkipLowPriorityDuties { get; set; }
         public bool ConfigureTextAdvance { get; set; } = true;
-        public bool HideSeasonalEventsFromJournalProgress { get; set; } = false;
+        public bool HideSeasonalEventsFromJournalProgress { get; set; }
     }
 
     internal sealed class StopConfiguration
