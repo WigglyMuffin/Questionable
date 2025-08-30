@@ -22,7 +22,8 @@ namespace Questionable.Windows;
 
 internal sealed class PriorityWindow : LWindow
 {
-    private const string ClipboardPrefix = "qst:v1:";
+    private const string ClipboardPrefix = "qst:priority:";
+    private const string LegacyClipboardPrefix = "qst:v1:";
     private const char ClipboardSeparator = ';';
 
     private readonly QuestController _questController;
@@ -221,14 +222,28 @@ internal sealed class PriorityWindow : LWindow
         List<ElementId> clipboardItems = new List<ElementId>();
         try
         {
-            if (!string.IsNullOrEmpty(clipboardText) && clipboardText.StartsWith(ClipboardPrefix, StringComparison.InvariantCulture))
+            if (!string.IsNullOrEmpty(clipboardText))
             {
-                clipboardText = clipboardText.Substring(ClipboardPrefix.Length);
-                string text = Encoding.UTF8.GetString(Convert.FromBase64String(clipboardText));
-                foreach (string part in text.Split(ClipboardSeparator))
+                string? prefixToRemove = null;
+
+                if (clipboardText.StartsWith(ClipboardPrefix, StringComparison.InvariantCulture))
                 {
-                    ElementId elementId = ElementId.FromString(part);
-                    clipboardItems.Add(elementId);
+                    prefixToRemove = ClipboardPrefix;
+                }
+                else if (clipboardText.StartsWith(LegacyClipboardPrefix, StringComparison.InvariantCulture))
+                {
+                    prefixToRemove = LegacyClipboardPrefix;
+                }
+
+                if (prefixToRemove != null)
+                {
+                    clipboardText = clipboardText.Substring(prefixToRemove.Length);
+                    string text = Encoding.UTF8.GetString(Convert.FromBase64String(clipboardText));
+                    foreach (string part in text.Split(ClipboardSeparator))
+                    {
+                        ElementId elementId = ElementId.FromString(part);
+                        clipboardItems.Add(elementId);
+                    }
                 }
             }
         }
