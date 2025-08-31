@@ -1,4 +1,5 @@
-﻿using Dalamud.Plugin;
+﻿using System;
+using Dalamud.Plugin;
 using Dalamud.Plugin.Ipc;
 using Dalamud.Plugin.Ipc.Exceptions;
 using Microsoft.Extensions.Logging;
@@ -67,14 +68,21 @@ internal sealed class AutoDutyIpc
         }
     }
 
-    public void StartInstance(uint cfcId)
+    public void StartInstance(uint cfcId, DutyMode dutyMode)
     {
         if (!_territoryData.TryGetContentFinderCondition(cfcId, out var cfcData))
             throw new TaskException($"Unknown ContentFinderConditionId {cfcId}");
 
         try
         {
-            _setConfig.InvokeAction("dutyModeEnum", "Support");
+            _setConfig.InvokeAction("Unsynced", $"{dutyMode == DutyMode.UnsyncRegular}");
+            _setConfig.InvokeAction("dutyModeEnum", dutyMode switch
+            {
+                DutyMode.Support => "Support",
+                DutyMode.UnsyncRegular => "Regular",
+                _ => throw new ArgumentOutOfRangeException(nameof(dutyMode), dutyMode, null)
+            });
+
             _run.InvokeAction(cfcData.TerritoryId, 1, !_configuration.Advanced.DisableAutoDutyBareMode);
         }
         catch (IpcError e)
@@ -106,5 +114,11 @@ internal sealed class AutoDutyIpc
         {
             throw new TaskException($"Unable to stop AutoDuty: {e.Message}", e);
         }
+    }
+
+    public enum DutyMode
+    {
+        Support = 1,
+        UnsyncRegular = 2,
     }
 }
