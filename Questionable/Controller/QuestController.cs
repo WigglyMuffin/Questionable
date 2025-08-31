@@ -67,7 +67,7 @@ internal sealed class QuestController : MiniTaskController<QuestController>
     private Vector3 _lastPlayerPosition = Vector3.Zero;
     private int _lastQuestStep = -1;
     private byte _lastQuestSequence = 255;
-    private ElementId? _lastQuestId = null;
+    private ElementId? _lastQuestId;
     private DateTime _lastProgressUpdate = DateTime.Now;
     private DateTime _lastAutoRefresh = DateTime.MinValue;
 
