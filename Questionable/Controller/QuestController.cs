@@ -304,6 +304,12 @@ internal sealed class QuestController : MiniTaskController<QuestController>
 
         if (_condition[ConditionFlag.InCombat] ||
             _condition[ConditionFlag.Unconscious] ||
+            _condition[ConditionFlag.BoundByDuty] ||
+            _condition[ConditionFlag.InDeepDungeon] ||
+            _condition[ConditionFlag.WatchingCutscene] ||
+            _condition[ConditionFlag.WatchingCutscene78] ||
+            _condition[ConditionFlag.BetweenAreas] ||
+            _condition[ConditionFlag.BetweenAreas51] ||
             _gameFunctions.IsOccupied() ||
             _movementController.IsPathfinding ||
             _movementController.IsPathRunning ||
@@ -345,6 +351,8 @@ internal sealed class QuestController : MiniTaskController<QuestController>
 
                 _chatGui.Print($"Automatically refreshing quest step as no progress detected for {timeSinceProgress.TotalSeconds:F0} seconds.",
                     CommandHandler.MessageTag, CommandHandler.TagColor);
+
+                ClearTasksInternal();
 
                 Reload();
 
