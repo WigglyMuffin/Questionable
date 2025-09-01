@@ -2,9 +2,6 @@ using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Components;
 using Dalamud.Interface.Utility.Raii;
-using Dalamud.Logging;
-using Humanizer;
-using Humanizer.Localisation;
 using Microsoft.Extensions.Logging;
 using Questionable.Controller;
 using Questionable.Data;
@@ -14,7 +11,6 @@ using Questionable.Model.Questing;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Globalization;
 using System.Linq;
 
 namespace Questionable.Windows.QuestComponents;
@@ -119,11 +115,11 @@ internal sealed class EventInfoComponent
 
         if (eventQuest.EndsAtUtc != DateTime.MaxValue)
         {
-            string time = (eventQuest.EndsAtUtc - DateTime.UtcNow).Humanize(
-                precision: 1,
-                culture: CultureInfo.InvariantCulture,
-                minUnit: TimeUnit.Minute,
-                maxUnit: TimeUnit.Day);
+            var remaining = eventQuest.EndsAtUtc - DateTime.UtcNow;
+            if (remaining < TimeSpan.Zero)
+                remaining = TimeSpan.Zero;
+
+            string time = FormatRemainingTime(remaining);
             ImGui.Text($"{displayName} ({time})");
         }
         else
