@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Dalamud.Configuration;
@@ -41,6 +41,8 @@ internal sealed class Configuration : IPluginConfiguration
         public bool ShowIncompleteSeasonalEvents { get; set; } = true;
         public bool SkipLowPriorityDuties { get; set; }
         public bool ConfigureTextAdvance { get; set; } = true;
+        public bool AutoStepRefreshEnabled { get; set; } = true;
+        public int AutoStepRefreshDelaySeconds { get; set; } = 10;
         public bool HideSeasonalEventsFromJournalProgress { get; set; }
     }
 
@@ -72,6 +74,7 @@ internal sealed class Configuration : IPluginConfiguration
 
         public HashSet<uint> WhitelistedSinglePlayerDutyCfcIds { get; set; } = [];
         public HashSet<uint> BlacklistedSinglePlayerDutyCfcIds { get; set; } = [];
+        public Dictionary<string, bool> HeaderStates { get; set; } = [];
     }
 
     internal sealed class NotificationConfiguration
@@ -93,6 +96,7 @@ internal sealed class Configuration : IPluginConfiguration
         public bool SkipClassJobQuests { get; set; }
         public bool SkipARealmRebornHardModePrimals { get; set; }
         public bool SkipCrystalTowerRaids { get; set; }
+        public bool PreventQuestCompletion { get; set; }
     }
 
     internal enum ECombatModule

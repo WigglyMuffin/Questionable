@@ -6,6 +6,7 @@ using FFXIVClientStructs.FFXIV.Client.Game;
 using LLib.Gear;
 using Questionable.Controller.Steps.Common;
 using Questionable.Controller.Steps.Shared;
+using Questionable.Controller.Utils;
 using Questionable.Data;
 using Questionable.External;
 using Questionable.Functions;
@@ -27,9 +28,14 @@ internal static class Duty
 
             if (autoDutyIpc.IsConfiguredToRunContent(step.DutyOptions))
             {
-                yield return new StartAutoDutyTask(step.DutyOptions.ContentFinderConditionId);
+                yield return new StartAutoDutyTask(step.DutyOptions.ContentFinderConditionId,
+                    quest.Id is QuestId { Value: >= 357 and <= 360 }
+                        ? AutoDutyIpc.DutyMode.UnsyncRegular
+                        : AutoDutyIpc.DutyMode.Support);
                 yield return new WaitAutoDutyTask(step.DutyOptions.ContentFinderConditionId);
-                yield return new WaitAtEnd.WaitNextStepOrSequence();
+
+                if (!QuestWorkUtils.HasCompletionFlags(step.CompletionQuestVariablesFlags))
+                   yield return new WaitAtEnd.WaitNextStepOrSequence();
             }
             else
             {
@@ -39,9 +45,12 @@ internal static class Duty
         }
     }
 
-    internal sealed record StartAutoDutyTask(uint ContentFinderConditionId) : ITask
+    internal sealed record StartAutoDutyTask(
+        uint ContentFinderConditionId,
+        AutoDutyIpc.DutyMode DutyMode)
+        : ITask
     {
-        public override string ToString() => $"StartAutoDuty({ContentFinderConditionId})";
+        public override string ToString() => $"StartAutoDuty({ContentFinderConditionId}, {DutyMode})";
     }
 
     internal sealed class StartAutoDutyExecutor(
@@ -80,7 +89,7 @@ internal static class Duty
                 }
             }
 
-            autoDutyIpc.StartInstance(Task.ContentFinderConditionId);
+            autoDutyIpc.StartInstance(Task.ContentFinderConditionId, Task.DutyMode);
             return true;
         }
 

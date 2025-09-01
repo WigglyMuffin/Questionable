@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Numerics;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Keys;
 using Dalamud.Game.Gui.Toast;
@@ -59,6 +60,16 @@ internal sealed class QuestController : MiniTaskController<QuestController>
     ///
     /// </summary>
     private DateTime _lastTaskUpdate = DateTime.Now;
+
+    /// <summary>
+    /// Auto-refresh fields for tracking player state and progress
+    /// </summary>
+    private Vector3 _lastPlayerPosition = Vector3.Zero;
+    private int _lastQuestStep = -1;
+    private byte _lastQuestSequence = 255;
+    private ElementId? _lastQuestId;
+    private DateTime _lastProgressUpdate = DateTime.Now;
+    private DateTime _lastAutoRefresh = DateTime.MinValue;
 
     public QuestController(
         IClientState clientState,
@@ -163,6 +174,7 @@ internal sealed class QuestController : MiniTaskController<QuestController>
             _logger.LogInformation("Reload, resetting curent quest progress");
 
             ResetInternalState();
+            ResetAutoRefreshState();
 
             _questRegistry.Reload();
             _singlePlayerDutyConfigComponent.Reload();
@@ -179,6 +191,16 @@ internal sealed class QuestController : MiniTaskController<QuestController>
         _safeAnimationEnd = DateTime.MinValue;
 
         DebugState = null;
+    }
+
+    private void ResetAutoRefreshState()
+    {
+        _lastPlayerPosition = Vector3.Zero;
+        _lastQuestStep = -1;
+        _lastQuestSequence = 255;
+        _lastQuestId = null;
+        _lastProgressUpdate = DateTime.Now;
+        _lastAutoRefresh = DateTime.Now;
     }
 
     public void Update()
@@ -260,7 +282,83 @@ internal sealed class QuestController : MiniTaskController<QuestController>
             return;
         }
 
+        CheckAutoRefreshCondition();
+
         UpdateCurrentTask();
+    }
+
+    private void CheckAutoRefreshCondition()
+    {
+        if (!_configuration.General.AutoStepRefreshEnabled ||
+            AutomationType != EAutomationType.Automatic ||
+            !IsRunning ||
+            CurrentQuest == null ||
+            !_clientState.IsLoggedIn ||
+            _clientState.LocalPlayer == null)
+        {
+            return;
+        }
+
+        if (DateTime.Now < _lastAutoRefresh.AddSeconds(5))
+            return;
+
+        if (_condition[ConditionFlag.InCombat] ||
+            _condition[ConditionFlag.Unconscious] ||
+            _condition[ConditionFlag.BoundByDuty] ||
+            _condition[ConditionFlag.InDeepDungeon] ||
+            _condition[ConditionFlag.WatchingCutscene] ||
+            _condition[ConditionFlag.WatchingCutscene78] ||
+            _condition[ConditionFlag.BetweenAreas] ||
+            _condition[ConditionFlag.BetweenAreas51] ||
+            _gameFunctions.IsOccupied() ||
+            _movementController.IsPathfinding ||
+            _movementController.IsPathRunning ||
+            DateTime.Now < _safeAnimationEnd)
+        {
+            _lastProgressUpdate = DateTime.Now;
+            return;
+        }
+
+        Vector3 currentPosition = _clientState.LocalPlayer.Position;
+        ElementId currentQuestId = CurrentQuest.Quest.Id;
+        byte currentSequence = CurrentQuest.Sequence;
+        int currentStep = CurrentQuest.Step;
+
+        bool hasProgressBeenMade =
+            Vector3.Distance(currentPosition, _lastPlayerPosition) > 0.5f ||
+            !currentQuestId.Equals(_lastQuestId) ||
+            currentSequence != _lastQuestSequence ||
+            currentStep != _lastQuestStep;
+
+        if (hasProgressBeenMade)
+        {
+            _lastPlayerPosition = currentPosition;
+            _lastQuestId = currentQuestId;
+            _lastQuestSequence = currentSequence;
+            _lastQuestStep = currentStep;
+            _lastProgressUpdate = DateTime.Now;
+        }
+        else
+        {
+            // we detect no progress, check if we should auto-refresh
+            TimeSpan timeSinceProgress = DateTime.Now - _lastProgressUpdate;
+            TimeSpan refreshDelay = TimeSpan.FromSeconds(_configuration.General.AutoStepRefreshDelaySeconds);
+
+            if (timeSinceProgress >= refreshDelay)
+            {
+                _logger.LogInformation("Automatically refreshing quest step as no progress detected for {TimeSinceProgress:F1} seconds (quest: {QuestId}, sequence: {Sequence}, step: {Step})",
+                    timeSinceProgress.TotalSeconds, currentQuestId, currentSequence, currentStep);
+
+                _chatGui.Print($"Automatically refreshing quest step as no progress detected for {timeSinceProgress.TotalSeconds:F0} seconds.",
+                    CommandHandler.MessageTag, CommandHandler.TagColor);
+
+                ClearTasksInternal();
+
+                Reload();
+
+                _lastAutoRefresh = DateTime.Now;
+            }
+        }
     }
 
     private void UpdateCurrentQuest()
@@ -543,6 +641,8 @@ internal sealed class QuestController : MiniTaskController<QuestController>
                 CurrentQuest.SetStep(CurrentQuest.Step + 1);
             else
                 CurrentQuest.SetStep(255);
+
+            ResetAutoRefreshState();
         }
 
         using var scope = _logger.BeginScope("IncStepCt");
@@ -573,6 +673,8 @@ internal sealed class QuestController : MiniTaskController<QuestController>
             _nextQuest = null;
             _gatheringQuest = null;
             _lastTaskUpdate = DateTime.Now;
+
+            ResetAutoRefreshState();
         }
     }
 
@@ -598,6 +700,8 @@ internal sealed class QuestController : MiniTaskController<QuestController>
                 _logger.LogInformation("Couldn't execute next step during Stop() call");
 
             _lastTaskUpdate = DateTime.Now;
+
+            ResetAutoRefreshState();
         }
         else
             Stop(label);
@@ -721,6 +825,8 @@ internal sealed class QuestController : MiniTaskController<QuestController>
         {
             foreach (var task in _taskCreator.CreateTasks(CurrentQuest.Quest, CurrentQuest.Sequence, seq, step))
                 _taskQueue.Enqueue(task);
+
+            ResetAutoRefreshState();
         }
         catch (Exception e)
         {
@@ -944,7 +1050,8 @@ internal sealed class QuestController : MiniTaskController<QuestController>
                 ManualPriorityQuests.Insert(index, quest);
             return true;
         }
-        catch (Exception e) {
+        catch (Exception e)
+        {
             _logger.LogError(e, "Failed to insert quest in priority list");
             _chatGui.PrintError("Failed to insert quest in priority list, please check /xllog for details.", CommandHandler.MessageTag, CommandHandler.TagColor);
             return false;

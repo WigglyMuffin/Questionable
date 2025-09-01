@@ -131,19 +131,17 @@ jobs:
           
           # Check if build outputs exist
           if [ -f "Questionable/dist/Questionable/latest.zip" ]; then
-            cp "Questionable/dist/Questionable/latest.zip" "release/Questionable-${VERSION}.zip"
             cp "Questionable/dist/Questionable/latest.zip" "release/latest.zip"
-            echo "✓ Copied plugin zip (versioned and latest)"
+            echo "Copied plugin zip"
           else
-            echo "⚠️ Warning: latest.zip not found"
+            echo "Warning: latest.zip not found"
           fi
           
           if [ -f "Questionable/dist/Questionable/Questionable.json" ]; then
-            cp "Questionable/dist/Questionable/Questionable.json" "release/Questionable-${VERSION}.json"
             cp "Questionable/dist/Questionable/Questionable.json" "release/Questionable.json"
-            echo "✓ Copied plugin manifest (versioned and latest)"
+            echo "Copied plugin manifest"
           else
-            echo "⚠️ Warning: Questionable.json not found"
+            echo "Warning: Questionable.json not found"
           fi
           
           # List what we have
@@ -159,6 +157,35 @@ jobs:
               echo "Generated checksum for $file"
             fi
           done
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get the previous tag to compare against (before we create the new tag)
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          
+          if [ -n "$PREVIOUS_TAG" ]; then
+            echo "Generating changelog from $PREVIOUS_TAG to HEAD"
+            # Generate commit log since last tag with more detail
+            CHANGELOG=$(git log --pretty=format:"- %s (%h) by %an" ${PREVIOUS_TAG}..HEAD --no-merges)
+            COMMIT_COUNT=$(git rev-list --count ${PREVIOUS_TAG}..HEAD --no-merges)
+            echo "Found $COMMIT_COUNT commits since $PREVIOUS_TAG"
+          else
+            echo "No previous tag found, showing recent commits"
+            # Show last 10 commits if no previous tag
+            CHANGELOG=$(git log --pretty=format:"- %s (%h) by %an" -10 --no-merges)
+            COMMIT_COUNT=$(git rev-list --count HEAD --no-merges | head -10)
+          fi
+          
+          # If no commits, provide a default message
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG="- Version bump to ${VERSION}"
+          fi
+          
+          # Save changelog to output (handle multiline)
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Create and push tag
         run: |
@@ -176,27 +203,6 @@ jobs:
           git tag $TAG -m "Release version ${VERSION}"
           git push origin $TAG
 
-      - name: Generate changelog
-        id: changelog
-        run: |
-          # Get the previous tag to compare against
-          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
-          
-          if [ -n "$PREVIOUS_TAG" ]; then
-            echo "Generating changelog from $PREVIOUS_TAG to v${VERSION}"
-            # Generate commit log since last tag
-            CHANGELOG=$(git log --pretty=format:"- %s (%h)" ${PREVIOUS_TAG}..HEAD --no-merges)
-          else
-            echo "No previous tag found, showing recent commits"
-            # Show last 10 commits if no previous tag
-            CHANGELOG=$(git log --pretty=format:"- %s (%h)" -10 --no-merges)
-          fi
-          
-          # Save changelog to output (handle multiline)
-          echo "changelog<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGELOG" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -211,13 +217,15 @@ jobs:
             ${{ steps.changelog.outputs.changelog }}
             
             ### Installation Files
-            - `latest.zip` - **Always use this link for the newest version**
-            - `Questionable-${{ env.VERSION }}.zip` - Version-specific archive
-            - `Questionable.json` - Latest plugin manifest
-            - `Questionable-${{ env.VERSION }}.json` - Version-specific manifest
+            - `latest.zip` - **Plugin archive for installation**
+            - `Questionable.json` - Plugin manifest
             - `*.sha256` - Checksums for verification
             
-            For detailed changes, see the [commit history](https://github.com/${{ github.repository }}/commits/v${{ env.VERSION }}).
+            ### Manual Changelog
+            ${{ steps.changelog.outputs.changelog }}
+            
+            ---
+            *Detailed changes and pull requests are listed below in the auto-generated release notes.*
           files: |
             release/*
           draft: false

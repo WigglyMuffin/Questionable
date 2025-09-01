@@ -119,6 +119,16 @@ internal sealed class DebugConfigComponent : ConfigComponent
 
             ImGui.SameLine();
             ImGuiComponents.HelpMarker("Crystal Tower raids are required for the Patch 2.55 quest 'A Time to Every Purpose' and to start Heavensward.");
+            
+            bool preventQuestCompletion = Configuration.Advanced.PreventQuestCompletion;
+            if (ImGui.Checkbox("Prevent quest completion", ref preventQuestCompletion))
+            {
+                Configuration.Advanced.PreventQuestCompletion = preventQuestCompletion;
+                Save();
+            }
+
+            ImGui.SameLine();
+            ImGuiComponents.HelpMarker("When enabled, Questionable will not attempt to turn-in and complete quests. This will do everything automatically except the final turn-in step.");
         }
     }
 }

@@ -38,13 +38,15 @@
                 {
                     "DataId": 2006633,
                     "Position": {
-                        "X": -15.121765,
-                        "Y": 168.01697,
-                        "Z": -100.450195
+                        "X": -13.002365,
+                        "Y": 172.73012,
+                        "Z": -103.776634
                     },
                     "TerritoryId": 401,
                     "InteractionType": "Interact",
-                    "Fly": true
+                    "Fly": true,
+                    "StopDistance": 1,
+                    "Land": true
                 }
             ]
         },
