@@ -10,6 +10,7 @@ using Lumina.Excel.Sheets;
 using Questionable.Model;
 using Questionable.Model.Questing;
 using Quest = Lumina.Excel.Sheets.Quest;
+using Questionable.Windows.QuestComponents;
 
 namespace Questionable.Data;
 
@@ -490,7 +491,22 @@ internal sealed class QuestData
         if (_quests.TryGetValue(questId, out var info) && info is QuestInfo qi)
         {
             qi.IsSeasonalQuest = isSeasonal;
-            qi.SeasonalQuestExpiry = expiry;
+            if (expiry.HasValue)
+            {
+                DateTime raw = expiry.Value;
+                DateTime normalized;
+                // date-only (time 00:00:00) -> end of day at 14:59:59 UTC
+                if (raw.TimeOfDay == TimeSpan.Zero)
+                    normalized = EventInfoComponent.AtDailyReset(DateOnly.FromDateTime(raw));
+                else
+                    normalized = raw.Kind == DateTimeKind.Utc ? raw : raw.ToUniversalTime();
+
+                qi.SeasonalQuestExpiry = normalized;
+            }
+            else
+            {
+                qi.SeasonalQuestExpiry = null;
+            }
         }
     }
 }

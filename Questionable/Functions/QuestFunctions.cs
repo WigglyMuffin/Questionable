@@ -23,6 +23,7 @@ using Questionable.Model.Common;
 using Questionable.Model.Questing;
 using GrandCompany = FFXIVClientStructs.FFXIV.Client.UI.Agent.GrandCompany;
 using Quest = Questionable.Model.Quest;
+using Questionable.Windows.QuestComponents;
 
 namespace Questionable.Functions;
 
@@ -751,7 +752,12 @@ internal sealed unsafe class QuestFunctions
         // treat expiry alone as authoritative
         if (questInfo.SeasonalQuestExpiry is DateTime expiryValue)
         {
-            DateTime expiryUtc = expiryValue.Kind == DateTimeKind.Utc ? expiryValue : expiryValue.ToUniversalTime();
+            DateTime expiryUtc;
+            if (expiryValue.TimeOfDay == TimeSpan.Zero)
+                expiryUtc = EventInfoComponent.AtDailyReset(DateOnly.FromDateTime(expiryValue));
+            else
+                expiryUtc = expiryValue.Kind == DateTimeKind.Utc ? expiryValue : expiryValue.ToUniversalTime();
+
             if (DateTime.UtcNow > expiryUtc)
             {
                 if (_alreadyLoggedUnobtainableQuests.Add(questId.Value))
