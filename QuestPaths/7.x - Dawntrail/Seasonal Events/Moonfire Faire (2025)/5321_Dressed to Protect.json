@@ -2,7 +2,7 @@
   "$schema": "https://github.com/WigglyMuffin/Questionable/raw/refs/heads/main/QuestPaths/quest-v1.json",
   "Author": "liza",
   "IsSeasonalQuest": true,
-  "SeasonalQuestExpiry": "2025-08-26T14:59:59Z",
+  "SeasonalQuestExpiry": "2025-08-26",
   "QuestSequence": [
     {
       "Sequence": 0,
