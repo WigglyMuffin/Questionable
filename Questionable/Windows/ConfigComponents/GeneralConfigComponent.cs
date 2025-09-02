@@ -190,7 +190,7 @@ internal sealed class GeneralConfigComponent : ConfigComponent
 
             ImGui.Spacing();
             bool autoStepRefreshEnabled = Configuration.General.AutoStepRefreshEnabled;
-            if (ImGui.Checkbox("Automatically refresh quest steps when stuck", ref autoStepRefreshEnabled))
+            if (ImGui.Checkbox("Automatically refresh quest steps when stuck (WIP see tooltip)", ref autoStepRefreshEnabled))
             {
                 Configuration.General.AutoStepRefreshEnabled = autoStepRefreshEnabled;
                 Save();
@@ -208,6 +208,7 @@ internal sealed class GeneralConfigComponent : ConfigComponent
                 {
                     ImGui.Text("Questionable will automatically refresh a quest step if it appears to be stuck after the configured delay.");
                     ImGui.Text("This helps resume automated quest completion when interruptions occur.");
+                    ImGui.Text("WIP feature, rather than remove it, this is a warning that it isn't fully complete.");
                 }
             }
 
