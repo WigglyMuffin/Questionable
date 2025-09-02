@@ -15,6 +15,10 @@
       <PackageReference Include="Pictomancy" Version="0.0.1" />
     </ItemGroup>
 
-    <Import Project="..\LLib\LLib.targets"/>
-    <Import Project="..\LLib\RenameZip.targets"/>
+    <ItemGroup>
+      <PackageReference Update="DalamudPackager" Version="13.1.0" />
+    </ItemGroup>
+
+    <Import Project="..\LLib\LLib.targets" />
+    <Import Project="..\LLib\RenameZip.targets" />
 </Project>
