@@ -85,11 +85,6 @@
       "Sequence": 5,
       "Steps": [
         {
-          "TerritoryId": 1237,
-          "InteractionType": "Action",
-          "Action": "Duty Action I"
-        },
-        {
           "DataId": 2014657,
           "Position": {
             "X": 533.53174,
@@ -136,7 +131,8 @@
             "Z": -72.129456
           },
           "TerritoryId": 1237,
-          "InteractionType": "CompleteQuest"
+          "InteractionType": "CompleteQuest",
+          "NextQuestId": 5409
         }
       ]
     }

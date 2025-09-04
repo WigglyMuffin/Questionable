@@ -1,0 +1,68 @@
+{
+  "$schema": "https://github.com/WigglyMuffin/Questionable/raw/refs/heads/main/QuestPaths/quest-v1.json",
+  "Author": "WigglyMuffin",
+  "QuestSequence": [
+    {
+      "Sequence": 0,
+      "Steps": [
+        {
+          "DataId": 1039457,
+          "Position": {
+            "X": 25.802979,
+            "Y": 0,
+            "Z": 13.38208
+          },
+          "TerritoryId": 1278,
+          "InteractionType": "AcceptQuest"
+        }
+      ]
+    },
+    {
+      "Sequence": 1,
+      "Steps": [
+        {
+          "DataId": 1039456,
+          "Position": {
+            "X": 28.854736,
+            "Y": 0,
+            "Z": 13.351624
+          },
+          "TerritoryId": 1278,
+          "InteractionType": "Emote",
+          "Emote": "doubt"
+        }
+      ]
+    },
+    {
+      "Sequence": 2,
+      "Steps": [
+        {
+          "DataId": 1053908,
+          "Position": {
+            "X": 28.854736,
+            "Y": 0,
+            "Z": 13.351624
+          },
+          "TerritoryId": 1278,
+          "InteractionType": "Interact"
+        }
+      ]
+    },
+    {
+      "Sequence": 255,
+      "Steps": [
+        {
+          "DataId": 2014937,
+          "Position": {
+            "X": 27.60829,
+            "Y": 0,
+            "Z": 11.74576
+          },
+          "TerritoryId": 1278,
+          "InteractionType": "Interact",
+          "NextQuestId": 5381
+        }
+      ]
+    }
+  ]
+}

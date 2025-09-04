@@ -1,0 +1,58 @@
+{
+  "$schema": "https://github.com/WigglyMuffin/Questionable/raw/refs/heads/main/QuestPaths/quest-v1.json",
+  "Author": "WigglyMuffin",
+  "QuestSequence": [
+    {
+      "Sequence": 0,
+      "Steps": [
+        {
+          "DataId": 1052617,
+          "Position": {
+            "X": -53.177734,
+            "Y": -3.33786E-06,
+            "Z": -72.129456
+          },
+          "TerritoryId": 1237,
+          "InteractionType": "AcceptQuest"
+        }
+      ]
+    },
+    {
+      "Sequence": 1,
+      "Steps": [
+        {
+          "DataId": 1052624,
+          "Position": {
+            "X": -42.008118,
+            "Y": 11.869998,
+            "Z": -95.75043
+          },
+          "TerritoryId": 1237,
+          "InteractionType": "Interact",
+          "DialogueChoices": [
+            {
+              "Type": "YesNo",
+              "Prompt": "TEXT_KINGWK201_05409_SYSTEM_100_021",
+              "Yes": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Sequence": 255,
+      "Steps": [
+        {
+          "DataId": 1053219,
+          "Position": {
+            "X": 287.49524,
+            "Y": 52.00211,
+            "Z": -382.9862
+          },
+          "TerritoryId": 1291,
+          "InteractionType": "CompleteQuest"
+        }
+      ]
+    }
+  ]
+}

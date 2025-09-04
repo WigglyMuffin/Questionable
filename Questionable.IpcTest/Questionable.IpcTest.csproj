@@ -9,5 +9,9 @@
         <ProjectReference Include="..\LLib\LLib.csproj" />
     </ItemGroup>
 
-    <Import Project="..\LLib\LLib.targets"/>
+    <ItemGroup>
+      <PackageReference Update="DalamudPackager" Version="13.1.0" />
+    </ItemGroup>
+
+    <Import Project="..\LLib\LLib.targets" />
 </Project>

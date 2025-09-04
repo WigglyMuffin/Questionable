@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.Graphics.Kernel;
+using FFXIVClientStructs.FFXIV.Client.System.Input;
 using FFXIVClientStructs.FFXIV.Client.System.String;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using Microsoft.Extensions.Logging;
@@ -89,7 +90,7 @@ internal static class Dive
             var keybind = new UIInputData.Keybind();
             var keyName = Utf8String.FromString("MOVE_DESCENT");
             var inputData = UIInputData.Instance();
-            inputData->GetKeybind(keyName, &keybind);
+            inputData->GetKeybindByName(keyName, (Keybind*)&keybind);
 
             logger.LogInformation("Dive keybind: {Key1} + {Modifier1}, {Key2} + {Modifier2}", keybind.Key,
                 keybind.Modifier, keybind.AltKey, keybind.AltModifier);
