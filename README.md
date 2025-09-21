@@ -114,13 +114,20 @@ Access configuration through the main plugin window or `/questionable config`:
 - ✅ Side Quests (Most)
 - ⚠️ Custom Delivery (Partial)
 
+**Quest Database & Tools:**
+- **[Quest Coverage](https://wigglymuffin.github.io/FFXIV-Tools/)** - Explore quest coverage and paths
+
 ## Disclaimer
 
 **Use at your own risk.** While this plugin automates quest completion and is designed to simulate normal player behaviour, never leave it unattended as automation always carries inherent risks.
 
 ## License
 
-This project is licensed under the GNU Affero General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
+**As of version 6.9, this project has transitioned from AGPL v3 to proprietary licensing.**
+- Version 6.8 and earlier: GNU Affero General Public License v3.0
+- Version 6.9 and later: All Rights Reserved (proprietary)
+
+See the [LICENSE](LICENSE) file for details.
 
 ## Credits
 
