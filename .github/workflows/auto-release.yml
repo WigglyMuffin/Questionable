@@ -1,233 +1,349 @@
-name: Auto Release on Version Bump
+name: Mirror Releases from Private Repo
 
 on:
-  push:
-    branches: [ main ]
-    paths: 
-      - 'Directory.Build.targets'
   workflow_dispatch:
     inputs:
+      release_tag:
+        description: 'Specific release tag to mirror'
+        required: false
+        type: string
       force_release:
         description: 'Force create release even if tag exists'
         required: false
         default: false
+        type: boolean
+      check_for_new:
+        description: 'Check for new releases and mirror if found'
+        required: false
+        default: true
         type: boolean
 
 permissions:
   contents: write
 
 jobs:
-  detect-version-change:
+  check-for-new-releases:
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.get-version.outputs.version }}
-      should-release: ${{ steps.check-release.outputs.should-release }}
-      tag-exists: ${{ steps.check-tag.outputs.exists }}
+      has-new-release: ${{ steps.compare-releases.outputs.has-new-release }}
+      latest-private-tag: ${{ steps.get-private-latest.outputs.tag_name }}
+      should-mirror: ${{ steps.compare-releases.outputs.should-mirror }}
     steps:
-      - name: Checkout repository
+      - name: Checkout public repository
         uses: actions/checkout@v4
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
-      - name: Extract version from Directory.Build.targets
-        id: get-version
+      - name: Get latest release from private repo
+        id: get-private-latest
+        env:
+          PRIVATE_TOKEN: ${{ secrets.AMBIV_PAT }}
         run: |
-          # Extract version using xmllint for more reliable parsing
-          if command -v xmllint >/dev/null 2>&1; then
-            VERSION=$(xmllint --xpath "string(//PropertyGroup/Version)" Directory.Build.targets 2>/dev/null || true)
-          fi
+          PRIVATE_REPO="WigglyMuffin/Ambivalence"
+          RELEASE_URL="https://api.github.com/repos/$PRIVATE_REPO/releases/latest"
           
-          # Fallback to grep if xmllint fails or is not available
-          if [ -z "$VERSION" ]; then
-            VERSION=$(grep -oP '<Version>\K[^<]+' Directory.Build.targets | head -1)
-          fi
+          echo "Checking for latest release in private repo..."
           
-          if [ -z "$VERSION" ]; then
-            echo "Error: Could not extract version from Directory.Build.targets"
+          # Fetch release information
+          HTTP_STATUS=$(curl -s -w "%{http_code}" -H "Authorization: token $PRIVATE_TOKEN" "$RELEASE_URL" -o private_release.json)
+          
+          if [ "$HTTP_STATUS" -eq 404 ]; then
+            echo "No releases found in private repo"
+            echo "tag_name=" >> $GITHUB_OUTPUT
+            exit 0
+          elif [ "$HTTP_STATUS" -ne 200 ]; then
+            echo "Error: API request failed with status $HTTP_STATUS"
             exit 1
           fi
           
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Detected version: $VERSION"
-
-      - name: Check if tag already exists
-        id: check-tag
-        run: |
-          TAG="v${{ steps.get-version.outputs.version }}"
-          if git ls-remote --tags origin | grep -q "refs/tags/$TAG$"; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-            echo "Tag $TAG already exists"
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-            echo "Tag $TAG does not exist"
-          fi
-
-      - name: Determine if release should be created
-        id: check-release
-        run: |
-          FORCE_RELEASE="${{ github.event.inputs.force_release }}"
-          TAG_EXISTS="${{ steps.check-tag.outputs.exists }}"
+          PRIVATE_TAG=$(cat private_release.json | jq -r '.tag_name // ""')
+          PRIVATE_PUBLISHED=$(cat private_release.json | jq -r '.published_at // ""')
           
-          if [ "$FORCE_RELEASE" = "true" ] || [ "$TAG_EXISTS" = "false" ]; then
-            echo "should-release=true" >> $GITHUB_OUTPUT
-            echo "Will create release"
+          echo "tag_name=$PRIVATE_TAG" >> $GITHUB_OUTPUT
+          echo "published_at=$PRIVATE_PUBLISHED" >> $GITHUB_OUTPUT
+          echo "Latest private repo release: $PRIVATE_TAG (published: $PRIVATE_PUBLISHED)"
+
+      - name: Get latest release from public repo
+        id: get-public-latest
+        run: |
+          echo "Checking for latest release in public repo..."
+          
+          # Get latest release from current repo
+          PUBLIC_TAG=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/latest" | \
+            jq -r '.tag_name // ""')
+          
+          echo "tag_name=$PUBLIC_TAG" >> $GITHUB_OUTPUT
+          echo "Latest public repo release: $PUBLIC_TAG"
+
+      - name: Compare releases and determine if mirroring is needed
+        id: compare-releases
+        env:
+          PRIVATE_TAG: ${{ steps.get-private-latest.outputs.tag_name }}
+          PUBLIC_TAG: ${{ steps.get-public-latest.outputs.tag_name }}
+          FORCE_RELEASE: ${{ github.event.inputs.force_release || 'false' }}
+          SPECIFIC_TAG: ${{ github.event.inputs.release_tag || '' }}
+          CHECK_FOR_NEW: ${{ github.event.inputs.check_for_new || 'true' }}
+        run: |
+          echo "Private repo latest: '$PRIVATE_TAG'"
+          echo "Public repo latest: '$PUBLIC_TAG'"
+          
+          # If specific tag is requested, always mirror it
+          if [ -n "$SPECIFIC_TAG" ]; then
+            echo "has-new-release=true" >> $GITHUB_OUTPUT
+            echo "should-mirror=true" >> $GITHUB_OUTPUT
+            echo "Will mirror specific tag: $SPECIFIC_TAG"
+            exit 0
+          fi
+          
+          # If force release is enabled, mirror the latest
+          if [ "$FORCE_RELEASE" = "true" ]; then
+            echo "has-new-release=true" >> $GITHUB_OUTPUT
+            echo "should-mirror=true" >> $GITHUB_OUTPUT
+            echo "Force release enabled - will mirror latest"
+            exit 0
+          fi
+          
+          # If no private release exists, nothing to do
+          if [ -z "$PRIVATE_TAG" ]; then
+            echo "has-new-release=false" >> $GITHUB_OUTPUT
+            echo "should-mirror=false" >> $GITHUB_OUTPUT
+            echo "No releases in private repo"
+            exit 0
+          fi
+          
+          # Compare tags to see if there's a new release
+          if [ "$PRIVATE_TAG" != "$PUBLIC_TAG" ]; then
+            echo "has-new-release=true" >> $GITHUB_OUTPUT
+            echo "should-mirror=true" >> $GITHUB_OUTPUT
+            echo "New release detected! Private: $PRIVATE_TAG, Public: $PUBLIC_TAG"
           else
-            echo "should-release=false" >> $GITHUB_OUTPUT
-            echo "Will not create release (tag exists and not forced)"
+            echo "has-new-release=false" >> $GITHUB_OUTPUT
+            echo "should-mirror=false" >> $GITHUB_OUTPUT
+            echo "Public repo is up to date with private repo ($PRIVATE_TAG)"
           fi
 
-  build-and-release:
-    needs: detect-version-change
-    if: needs.detect-version-change.outputs.should-release == 'true'
+  mirror-releases:
+    needs: check-for-new-releases
+    if: needs.check-for-new-releases.outputs.should-mirror == 'true'
     runs-on: ubuntu-latest
-    env:
-      VERSION: ${{ needs.detect-version-change.outputs.version }}
     steps:
-      - name: Checkout repository
+      - name: Checkout public repository
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '9.0.x'
-
-      - name: Cache NuGet packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.nuget/packages
-          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/packages.lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-nuget-
-
-      - name: Download and setup Dalamud
+      - name: Get release from private repo
+        id: get-private-release
+        env:
+          PRIVATE_TOKEN: ${{ secrets.AMBIV_PAT }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || '' }}
         run: |
-          echo "Downloading Dalamud..."
-          wget -q https://goatcorp.github.io/dalamud-distrib/stg/latest.zip -O dalamud.zip
-          unzip -q dalamud.zip -d .dalamud
-          echo "DALAMUD_HOME=$PWD/.dalamud/" >> $GITHUB_ENV
-
-      - name: Restore NuGet packages
-        run: |
-          dotnet restore /p:Configuration=Release --packages .nuget
-
-      - name: Build plugin
-        run: |
-          echo "Building plugin..."
-          dotnet build Questionable/Questionable.csproj \
-            -c Release \
-            -f net9.0-windows \
-            -p:DalamudLibPath=$DALAMUD_HOME \
-            -maxcpucount:1 \
-            --source $PWD/.nuget \
-            --no-restore \
-            --verbosity minimal
-
-      - name: Prepare release artifacts
-        run: |
-          echo "Preparing release artifacts..."
-          mkdir -p release
+          # Set the private repo details
+          PRIVATE_REPO="WigglyMuffin/Ambivalence"
           
-          # Check if build outputs exist
-          if [ -f "Questionable/dist/Questionable/latest.zip" ]; then
-            cp "Questionable/dist/Questionable/latest.zip" "release/latest.zip"
-            echo "Copied plugin zip"
-          else
-            echo "Warning: latest.zip not found"
+          # Check if token is available
+          if [ -z "$PRIVATE_TOKEN" ]; then
+            echo "Error: AMBIV_PAT secret is not set"
+            echo "Please add the PAT as a repository secret named AMBIV_PAT"
+            exit 1
           fi
           
-          if [ -f "Questionable/dist/Questionable/Questionable.json" ]; then
-            cp "Questionable/dist/Questionable/Questionable.json" "release/Questionable.json"
-            echo "Copied plugin manifest"
+          # Determine which release to fetch
+          if [ -n "$RELEASE_TAG" ]; then
+            echo "Fetching specific release: $RELEASE_TAG"
+            RELEASE_URL="https://api.github.com/repos/$PRIVATE_REPO/releases/tags/$RELEASE_TAG"
           else
-            echo "Warning: Questionable.json not found"
+            echo "Fetching latest release"
+            RELEASE_URL="https://api.github.com/repos/$PRIVATE_REPO/releases/latest"
           fi
           
-          # List what we have
-          echo "Release artifacts:"
-          ls -la release/
+          echo "Making API request to: $RELEASE_URL"
+          
+          # Fetch release information with detailed error handling
+          HTTP_STATUS=$(curl -s -w "%{http_code}" -H "Authorization: token $PRIVATE_TOKEN" "$RELEASE_URL" -o response.json)
+          
+          echo "HTTP Status: $HTTP_STATUS"
+          echo "API Response:"
+          cat response.json
+          
+          # Check HTTP status
+          if [ "$HTTP_STATUS" -eq 401 ]; then
+            echo "Error: Authentication failed. Check your AMBIV_PAT"
+            echo "Make sure the token has 'repo' permissions for private repositories"
+            exit 1
+          elif [ "$HTTP_STATUS" -eq 404 ]; then
+            echo "Error: Repository or release not found"
+            echo "Make sure the repository 'WigglyMuffin/Ambivalence' exists and has releases"
+            exit 1
+          elif [ "$HTTP_STATUS" -ne 200 ]; then
+            echo "Error: API request failed with status $HTTP_STATUS"
+            exit 1
+          fi
+          
+          RELEASE_DATA=$(cat response.json)
+          
+          # Check if the response is valid JSON with expected fields
+          if ! echo "$RELEASE_DATA" | jq -e '.tag_name' > /dev/null; then
+            echo "Error: Invalid response from GitHub API"
+            echo "Response does not contain expected release data"
+            exit 1
+          fi
+          
+          # Extract release information
+          TAG_NAME=$(echo "$RELEASE_DATA" | jq -r '.tag_name // "unknown"')
+          RELEASE_NAME=$(echo "$RELEASE_DATA" | jq -r '.name // .tag_name // "Release"')
+          RELEASE_BODY=$(echo "$RELEASE_DATA" | jq -r '.body // "No description provided"')
+          IS_PRERELEASE=$(echo "$RELEASE_DATA" | jq -r '.prerelease // false')
+          IS_DRAFT=$(echo "$RELEASE_DATA" | jq -r '.draft // false')
+          
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
+          echo "is_prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
+          echo "is_draft=$IS_DRAFT" >> $GITHUB_OUTPUT
+          
+          # Save release body to file (to handle multiline content)
+          echo "$RELEASE_BODY" > release_body.txt
+          
+          # Save asset information (handle case where assets might be empty)
+          echo "$RELEASE_DATA" | jq -r '.assets[]? | "\(.name)|\(.id)|\(.browser_download_url)"' > assets.txt || echo "" > assets.txt
+          
+          echo "Found release: $TAG_NAME - $RELEASE_NAME"
+          echo "Prerelease: $IS_PRERELEASE, Draft: $IS_DRAFT"
+          echo "Assets found:"
+          if [ -s assets.txt ]; then
+            cat assets.txt
+          else
+            echo "No assets found for this release"
+          fi
 
-      - name: Generate checksums
+      - name: Check if release already exists in public repo
+        id: check-existing
+        env:
+          TAG_NAME: ${{ steps.get-private-release.outputs.tag_name }}
+          FORCE_RELEASE: ${{ github.event.inputs.force_release || 'false' }}
         run: |
-          cd release
-          for file in *.zip *.json; do
-            if [ -f "$file" ]; then
-              sha256sum "$file" > "$file.sha256"
-              echo "Generated checksum for $file"
+          # Check if tag already exists
+          if git ls-remote --tags origin | grep -q "refs/tags/$TAG_NAME$"; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Tag $TAG_NAME already exists in public repo"
+            
+            if [ "$FORCE_RELEASE" != "true" ]; then
+              echo "should_skip=true" >> $GITHUB_OUTPUT
+              echo "Skipping release creation (tag exists and not forced)"
+            else
+              echo "should_skip=false" >> $GITHUB_OUTPUT
+              echo "Will force create release"
             fi
-          done
-
-      - name: Generate changelog
-        id: changelog
-        run: |
-          # Get the previous tag to compare against (before we create the new tag)
-          PREVIOUS_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-          
-          if [ -n "$PREVIOUS_TAG" ]; then
-            echo "Generating changelog from $PREVIOUS_TAG to HEAD"
-            # Generate commit log since last tag with more detail
-            CHANGELOG=$(git log --pretty=format:"- %s (%h) by %an" ${PREVIOUS_TAG}..HEAD --no-merges)
-            COMMIT_COUNT=$(git rev-list --count ${PREVIOUS_TAG}..HEAD --no-merges)
-            echo "Found $COMMIT_COUNT commits since $PREVIOUS_TAG"
           else
-            echo "No previous tag found, showing recent commits"
-            # Show last 10 commits if no previous tag
-            CHANGELOG=$(git log --pretty=format:"- %s (%h) by %an" -10 --no-merges)
-            COMMIT_COUNT=$(git rev-list --count HEAD --no-merges | head -10)
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "should_skip=false" >> $GITHUB_OUTPUT
+            echo "Tag $TAG_NAME does not exist, will create release"
           fi
-          
-          # If no commits, provide a default message
-          if [ -z "$CHANGELOG" ]; then
-            CHANGELOG="- Version bump to ${VERSION}"
-          fi
-          
-          # Save changelog to output (handle multiline)
-          echo "changelog<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGELOG" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Create and push tag
+      - name: Download release assets
+        if: steps.check-existing.outputs.should_skip != 'true'
+        env:
+          PRIVATE_TOKEN: ${{ secrets.AMBIV_PAT }}
         run: |
-          TAG="v${VERSION}"
+          mkdir -p release_assets
+          
+          # Check if there are any assets to download
+          if [ ! -s assets.txt ]; then
+            echo "No assets to download"
+            touch release_assets/.gitkeep
+            exit 0
+          fi
+          
+          # Download each asset using GitHub API for private repos
+          while IFS='|' read -r asset_name asset_id browser_url; do
+            if [ -n "$asset_name" ] && [ -n "$asset_id" ]; then
+              echo "Downloading $asset_name (ID: $asset_id)..."
+              
+              # Use GitHub API to download private repo assets
+              API_URL="https://api.github.com/repos/WigglyMuffin/Ambivalence/releases/assets/$asset_id"
+              
+              curl -L -H "Authorization: token $PRIVATE_TOKEN" \
+                   -H "Accept: application/octet-stream" \
+                   -o "release_assets/$asset_name" \
+                   "$API_URL"
+              
+              if [ $? -eq 0 ] && [ -f "release_assets/$asset_name" ] && [ -s "release_assets/$asset_name" ]; then
+                FILE_SIZE=$(du -h "release_assets/$asset_name" | cut -f1)
+                echo "Successfully downloaded $asset_name ($FILE_SIZE)"
+              else
+                echo "Failed to download $asset_name or file is empty"
+                # Try alternative download method as fallback
+                echo "Trying alternative download method..."
+                curl -L -H "Authorization: token $PRIVATE_TOKEN" \
+                     -o "release_assets/$asset_name" \
+                     "$browser_url"
+                
+                if [ $? -eq 0 ] && [ -s "release_assets/$asset_name" ]; then
+                  FILE_SIZE=$(du -h "release_assets/$asset_name" | cut -f1)
+                  echo "Successfully downloaded $asset_name using fallback method ($FILE_SIZE)"
+                else
+                  echo "Both download methods failed for $asset_name"
+                fi
+              fi
+            fi
+          done < assets.txt
+          
+          echo "Downloaded assets:"
+          ls -la release_assets/
+
+      - name: Create/update public release
+        if: steps.check-existing.outputs.should_skip != 'true'
+        env:
+          TAG_NAME: ${{ steps.get-private-release.outputs.tag_name }}
+          RELEASE_NAME: ${{ steps.get-private-release.outputs.release_name }}
+          IS_PRERELEASE: ${{ steps.get-private-release.outputs.is_prerelease }}
+          IS_DRAFT: ${{ steps.get-private-release.outputs.is_draft }}
+          TAG_EXISTS: ${{ steps.check-existing.outputs.exists }}
+        run: |
+          # Configure git
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           
-          # Delete tag if it exists (for force release)
-          if [ "${{ needs.detect-version-change.outputs.tag-exists }}" = "true" ]; then
-            echo "Deleting existing tag $TAG"
-            git tag -d $TAG || true
-            git push origin :refs/tags/$TAG || true
+          # Delete existing tag and release if forcing
+          if [ "$TAG_EXISTS" = "true" ] && [ "${{ github.event.inputs.force_release || 'false' }}" = "true" ]; then
+            echo "Deleting existing tag and release $TAG_NAME"
+            git tag -d $TAG_NAME || true
+            git push origin :refs/tags/$TAG_NAME || true
+            
+            # Delete the release via API
+            RELEASE_ID=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/releases/tags/$TAG_NAME" | \
+              jq -r '.id // empty')
+            
+            if [ -n "$RELEASE_ID" ]; then
+              curl -X DELETE -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                "https://api.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID"
+            fi
           fi
           
-          git tag $TAG -m "Release version ${VERSION}"
-          git push origin $TAG
+          # Create and push tag
+          git tag $TAG_NAME -m "Mirrored release from private repo"
+          git push origin $TAG_NAME
 
-      - name: Create GitHub Release
+      - name: Upload release to public repo
+        if: steps.check-existing.outputs.should_skip != 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ env.VERSION }}
-          name: "Questionable v${{ env.VERSION }}"
-          body: |
-            ## Questionable v${{ env.VERSION }}
-            
-            This release was automatically created following a version bump.
-            
-            ### Changes in this release
-            ${{ steps.changelog.outputs.changelog }}
-            
-            ### Installation Files
-            - `latest.zip` - **Plugin archive for installation**
-            - `Questionable.json` - Plugin manifest
-            - `*.sha256` - Checksums for verification
-            
-            ### Manual Changelog
-            ${{ steps.changelog.outputs.changelog }}
-            
-            ---
-            *Detailed changes and pull requests are listed below in the auto-generated release notes.*
+          tag_name: ${{ steps.get-private-release.outputs.tag_name }}
+          name: ${{ steps.get-private-release.outputs.release_name }}
+          body_path: release_body.txt
           files: |
-            release/*
-          draft: false
-          prerelease: false
-          generate_release_notes: true
+            release_assets/*
+          draft: ${{ steps.get-private-release.outputs.is_draft == 'true' }}
+          prerelease: ${{ steps.get-private-release.outputs.is_prerelease == 'true' }}
+          generate_release_notes: false
+
+      - name: Summary
+        if: steps.check-existing.outputs.should_skip != 'true'
+        run: |
+          echo "Successfully mirrored release ${{ steps.get-private-release.outputs.tag_name }} from private repo"
+          echo "Release name: ${{ steps.get-private-release.outputs.release_name }}"
+          echo "Assets included:"
+          ls -la release_assets/ | grep -v '^total'
