@@ -130,7 +130,7 @@
             "Emote",
             "Action",
             "StatusOff",
-            "WaitForNpcAtPosition",
+            "WaitForObjectAtPosition",
             "WaitForManualProgress",
             "Duty",
             "SinglePlayerDuty",
@@ -1632,7 +1632,7 @@
           "if": {
             "properties": {
               "InteractionType": {
-                "const": "WaitForNpcAtPosition"
+                "const": "WaitForObjectAtPosition"
               }
             }
           },
