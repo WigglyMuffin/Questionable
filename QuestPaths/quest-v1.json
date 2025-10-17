@@ -26,6 +26,15 @@
       "type": "boolean",
       "description": "If set to false, no priority quest (e.g. class quests) will be done while this is the currently active quest"
     },
+    "IsSeasonalQuest": {
+      "type": "boolean",
+      "description": "Set to true if this is an event quest (e.g. seasonal event)"
+    },
+    "SeasonalQuestExpiry": {
+      "description": "If this is an seasonal (event) quest, the date and time (in UTC) when this quest should no longer be available",
+      "format": "date-time",
+      "type": [ "string", "null" ]
+    },
     "Comment": {
       "type": "string"
     },
@@ -524,6 +533,31 @@
         {
           "if": {
             "properties": {
+              "IsSeasonalQuest": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "SeasonalQuestExpiry": {
+                "description": "If this is an seasonal (event) quest, the date and time (in UTC) when this quest should no longer be available",
+                "format": "date-time",
+                "type": [ "string", "null" ]
+              }
+            }
+          },
+          "else": {
+            "not": {
+              "required": [
+                "SeasonalQuestExpiry"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
               "InteractionType": {
                 "const": "Interact"
               }
@@ -1008,7 +1042,7 @@
                   "fistbump",
                   "thavdance",
                   "golddance",
-                  "sundance",
+                  "sundropdance",
                   "battlestance",
                   "victorypose",
                   "backflip",
@@ -1018,6 +1052,7 @@
                   "haurchefant",
                   "easternstretch",
                   "easterndance",
+                  "pet",
                   "rangerpose1r",
                   "rangerpose2r",
                   "rangerpose3r",
@@ -1058,7 +1093,7 @@
                   "tremble",
                   "winded",
                   "aback",
-                  "greet",
+                  "greeting",
                   "boxstep",
                   "sidestep",
                   "ultima",
@@ -1260,6 +1295,8 @@
                 "type": "string",
                 "description": "The action to use",
                 "enum": [
+                  "Duty Action I",
+                  "Duty Action II",
                   "Heavy Swing",
                   "Bootshine",
                   "Twin Snakes",
@@ -1304,8 +1341,8 @@
                   "Wasshoi",
                   "Shrouded Luminescence",
                   "Big Sneeze",
-                  "Duty Action I",
-                  "Duty Action II"
+                  "Trickster's Treat",
+                  "Treater's Trick"
                 ]
               }
             },
