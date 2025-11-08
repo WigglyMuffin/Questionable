@@ -255,23 +255,23 @@
                   }
                 },
                 "Item": {
-                  "type": "object",
-                  "properties": {
-                    "NotInInventory": {
-                      "type": "boolean"
-                    }
+                "type": "object",
+                "properties": {
+                  "InInventory": {
+                    "type": "boolean"
+                  },
+                  "NotInInventory": {
+                    "type": "boolean"
                   }
+                }
+              },
+                "MinimumLevel": {
+                  "type": "integer",
+                  "description": "Skip this step if the player level is greater than or equal to this value. Useful for steps that should only be done once at low levels (e.g., early aetheryte attunements).",
+                  "minimum": 1,
+                  "maximum": 100
                 },
                 "QuestsAccepted": {
-                  "type": "array",
-                  "items": {
-                    "type": [
-                      "number",
-                      "string"
-                    ]
-                  }
-                },
-                "QuestsCompleted": {
                   "type": "array",
                   "items": {
                     "type": [
@@ -1297,6 +1297,7 @@
                 "enum": [
                   "Duty Action I",
                   "Duty Action II",
+                  "Dismount",
                   "Heavy Swing",
                   "Bootshine",
                   "Twin Snakes",
