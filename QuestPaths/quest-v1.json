@@ -288,6 +288,15 @@
                     ]
                   }
                 },
+                "QuestsCompleted": {
+                  "type": "array",
+                  "items": {
+                    "type": [
+                      "number",
+                      "string"
+                    ]
+                  }
+                },
                 "NotNamePlateIconId": {
                   "type": "array",
                   "items": {
