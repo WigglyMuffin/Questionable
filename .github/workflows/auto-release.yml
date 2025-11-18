@@ -306,26 +306,14 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           
-          # Delete existing tag and release if forcing
-          if [ "$TAG_EXISTS" = "true" ] && [ "${{ github.event.inputs.force_release || 'false' }}" = "true" ]; then
-            echo "Deleting existing tag and release $TAG_NAME"
-            git tag -d $TAG_NAME || true
-            git push origin :refs/tags/$TAG_NAME || true
-            
-            # Delete the release via API
-            RELEASE_ID=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-              "https://api.github.com/repos/${{ github.repository }}/releases/tags/$TAG_NAME" | \
-              jq -r '.id // empty')
-            
-            if [ -n "$RELEASE_ID" ]; then
-              curl -X DELETE -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                "https://api.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID"
-            fi
+          # Create tag if it doesn't exist
+          if [ "$TAG_EXISTS" != "true" ]; then
+            echo "Creating new tag $TAG_NAME"
+            git tag $TAG_NAME -m "Mirrored release from private repo"
+            git push origin $TAG_NAME
+          else
+            echo "Tag $TAG_NAME already exists, will update existing release"
           fi
-          
-          # Create and push tag
-          git tag $TAG_NAME -m "Mirrored release from private repo"
-          git push origin $TAG_NAME
 
       - name: Upload release to public repo
         if: steps.check-existing.outputs.should_skip != 'true'
@@ -339,6 +327,8 @@ jobs:
           draft: ${{ steps.get-private-release.outputs.is_draft == 'true' }}
           prerelease: ${{ steps.get-private-release.outputs.is_prerelease == 'true' }}
           generate_release_notes: false
+          make_latest: true
+          fail_on_unmatched_files: false
 
       - name: Summary
         if: steps.check-existing.outputs.should_skip != 'true'
