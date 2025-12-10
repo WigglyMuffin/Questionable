@@ -52,6 +52,23 @@ Questionable requires the following plugins to function properly:
 - **[Pandora's Box](https://github.com/PunishXIV/PandorasBox)** - 'Auto Active Time Maneuver' feature
 - **[NotificationMaster](https://github.com/NightmareXIV/NotificationMaster)** - Out-of-game notifications
 
+## Enhanced Experience with Questionable Companion
+
+For the best multi-character automation experience, we recommend using our partnered **[Questionable Companion](https://github.com/MacaronDream/QSTCompanion)** plugin.
+
+**Questionable Companion** provides automated character rotation and quest sequence execution for Questionable. It automates multi-character MSQ progression by intelligently switching between characters based on quest completion and level requirements.
+
+### Features:
+- Automatic character switching and quest tracking
+- MSQ progression monitoring across all characters
+- Allied Society quest rotation and prioritization
+- Event quest automation with prerequisite checking
+- Chauffeur Mode for following main character through quests
+- Data Center travel automation
+- Stop point configuration for controlled progression
+
+**Required Plugins**: Questionable, AutoRetainer
+
 ## Usage
 
 ### Basic Commands
