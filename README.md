@@ -50,7 +50,6 @@ Questionable requires the following plugins to function properly:
 ### Recommended Plugins
 - **[CBT (Automaton)](https://github.com/Jaksuhn/Automaton)** - 'Sniper no sniping' feature
 - **[Pandora's Box](https://github.com/PunishXIV/PandorasBox)** - 'Auto Active Time Maneuver' feature
-- **[NotificationMaster](https://github.com/NightmareXIV/NotificationMaster)** - Out-of-game notifications
 
 ## Enhanced Experience with Questionable Companion
 
