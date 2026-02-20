@@ -1,4 +1,4 @@
-name: Testing Release (Public Mirror)
+name: Promote Release (Public Mirror)
 
 # ============================================================================
 # Plugin Configuration
@@ -16,51 +16,49 @@ permissions:
 
 jobs:
   # ================================================================
-  # Promote: convert a mirrored testing pre-release to full release
+  # Promote: flip prerelease flag on a mirrored release
   # ================================================================
   promote:
     if: github.event.action == 'promote-release'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout for tag operations
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - name: Promote pre-release to full release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ github.event.client_payload.version }}"
-          TESTING_TAG="testing-v${VERSION}"
-          STABLE_TAG="v${VERSION}"
+          TAG="v${VERSION}"
 
-          echo "Promoting mirrored ${TESTING_TAG} to stable release ${STABLE_TAG}..."
+          echo "Promoting ${TAG} from pre-release to stable..."
 
-          # Get the testing release ID
-          RELEASE_ID=$(gh api "repos/${{ github.repository }}/releases/tags/${TESTING_TAG}" --jq '.id' 2>/dev/null)
+          # Get the release by tag
+          RELEASE_ID=$(gh api "repos/${{ github.repository }}/releases/tags/${TAG}" --jq '.id' 2>/dev/null)
           if [ -z "$RELEASE_ID" ]; then
-            echo "Error: Mirrored testing release $TESTING_TAG not found"
+            echo "Error: Release ${TAG} not found"
             exit 1
           fi
 
-          # Create the new stable tag pointing to the same commit
-          TESTING_COMMIT=$(git rev-list -n 1 "$TESTING_TAG" 2>/dev/null || echo "")
-          if [ -z "$TESTING_COMMIT" ]; then
-            echo "Fetching tag from remote..."
-            git fetch origin "refs/tags/${TESTING_TAG}:refs/tags/${TESTING_TAG}"
-            TESTING_COMMIT=$(git rev-list -n 1 "$TESTING_TAG")
+          # Determine if this version should be marked as Latest
+          MAKE_LATEST="true"
+          CURRENT_LATEST=$(gh api "repos/${{ github.repository }}/releases/latest" --jq '.tag_name // ""' 2>/dev/null || echo "")
+          if [ -n "$CURRENT_LATEST" ]; then
+            NEW_VER="${TAG#v}"; NEW_VER="${NEW_VER%%-*}"
+            CUR_VER="${CURRENT_LATEST#v}"; CUR_VER="${CUR_VER%%-*}"
+            IFS='.' read -r NEW_MAJOR NEW_MINOR NEW_PATCH <<< "$NEW_VER"
+            IFS='.' read -r CUR_MAJOR CUR_MINOR CUR_PATCH <<< "$CUR_VER"
+            NEW_MAJOR=${NEW_MAJOR:-0}; NEW_MINOR=${NEW_MINOR:-0}; NEW_PATCH=${NEW_PATCH:-0}
+            CUR_MAJOR=${CUR_MAJOR:-0}; CUR_MINOR=${CUR_MINOR:-0}; CUR_PATCH=${CUR_PATCH:-0}
+            if [ "$NEW_MAJOR" -lt "$CUR_MAJOR" ] || \
+               ([ "$NEW_MAJOR" -eq "$CUR_MAJOR" ] && [ "$NEW_MINOR" -lt "$CUR_MINOR" ]) || \
+               ([ "$NEW_MAJOR" -eq "$CUR_MAJOR" ] && [ "$NEW_MINOR" -eq "$CUR_MINOR" ] && [ "$NEW_PATCH" -le "$CUR_PATCH" ]); then
+              MAKE_LATEST="false"
+              echo "Version $TAG is not higher than current latest $CURRENT_LATEST, will not mark as latest"
+            fi
           fi
 
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git tag "$STABLE_TAG" "$TESTING_COMMIT" -m "Release version ${VERSION}" 2>/dev/null || true
-          git push origin "$STABLE_TAG" 2>/dev/null || true
-
-          # Patch the release: flip prerelease flag, update tag, title, and notes
+          # Flip the prerelease flag and update title/notes
           gh api "repos/${{ github.repository }}/releases/${RELEASE_ID}" \
             --method PATCH \
-            -f tag_name="${STABLE_TAG}" \
             -f name="${{ env.PLUGIN_NAME }} v${VERSION}" \
             -f body="## ${{ env.PLUGIN_NAME }} v${VERSION}
 
@@ -69,10 +67,7 @@ jobs:
           ### Installation Files
           - \`latest.zip\` - **Plugin archive for installation**
           - \`${{ env.PLUGIN_NAME }}.json\` - Plugin manifest" \
-            -F prerelease=false
+            -F prerelease=false \
+            -f make_latest="$MAKE_LATEST"
 
-          # Clean up the old testing tag
-          git push origin ":refs/tags/${TESTING_TAG}" 2>/dev/null || true
-          git tag -d "$TESTING_TAG" 2>/dev/null || true
-
-          echo "Successfully promoted mirrored release to ${STABLE_TAG} (download counts preserved)"
+          echo "Successfully promoted ${TAG} to stable (download counts preserved, make_latest=$MAKE_LATEST)"

@@ -5,7 +5,6 @@ name: Mirror Releases from Private Repo
 # ============================================================================
 env:
   PRIVATE_REPO: "WigglyMuffin/Ambivalence"
-  PRIVATE_PAT_NAME: "AMBIV_PAT"
 
 on:
   repository_dispatch:
@@ -47,7 +46,7 @@ jobs:
       - name: Get latest release from private repo
         id: get-private-latest
         env:
-          PRIVATE_TOKEN: ${{ secrets[env.PRIVATE_PAT_NAME] }}
+          PRIVATE_TOKEN: ${{ secrets.PLUGIN_PAT }}
         run: |
           RELEASE_URL="https://api.github.com/repos/${{ env.PRIVATE_REPO }}/releases/latest"
 
@@ -144,13 +143,13 @@ jobs:
       - name: Get release from private repo
         id: get-private-release
         env:
-          PRIVATE_TOKEN: ${{ secrets[env.PRIVATE_PAT_NAME] }}
+          PRIVATE_TOKEN: ${{ secrets.PLUGIN_PAT }}
           RELEASE_TAG: ${{ github.event.inputs.release_tag || github.event.client_payload.release_tag || '' }}
         run: |
           # Check if token is available
           if [ -z "$PRIVATE_TOKEN" ]; then
-            echo "Error: ${{ env.PRIVATE_PAT_NAME }} secret is not set"
-            echo "Please add the PAT as a repository secret named ${{ env.PRIVATE_PAT_NAME }}"
+            echo "Error: PLUGIN_PAT secret is not set"
+            echo "Please add the PAT as an organization secret named PLUGIN_PAT"
             exit 1
           fi
 
@@ -172,7 +171,7 @@ jobs:
 
           # Check HTTP status
           if [ "$HTTP_STATUS" -eq 401 ]; then
-            echo "Error: Authentication failed. Check your ${{ env.PRIVATE_PAT_NAME }}"
+            echo "Error: Authentication failed. Check your PLUGIN_PAT"
             exit 1
           elif [ "$HTTP_STATUS" -eq 404 ]; then
             echo "Error: Repository or release not found"
@@ -206,7 +205,7 @@ jobs:
           # Save release body to file (to handle multiline content)
           echo "$RELEASE_BODY" > release_body.txt
 
-          # Save asset information (handle case where assets might be empty)
+          # Save asset information
           echo "$RELEASE_DATA" | jq -r '.assets[]? | "\(.name)|\(.id)|\(.browser_download_url)"' > assets.txt || echo "" > assets.txt
 
           echo "Found release: $TAG_NAME - $RELEASE_NAME"
@@ -222,16 +221,16 @@ jobs:
         id: check-existing
         env:
           TAG_NAME: ${{ steps.get-private-release.outputs.tag_name }}
-          FORCE_RELEASE: ${{ github.event.inputs.force_release || 'false' }}
+          FORCE_RELEASE: ${{ github.event.inputs.force_release || github.event.client_payload.force_release || 'false' }}
         run: |
-          # Check if tag already exists
-          if git ls-remote --tags origin | grep -q "refs/tags/$TAG_NAME$"; then
+          # Check if release already exists
+          if gh release view "$TAG_NAME" --repo ${{ github.repository }} &>/dev/null; then
             echo "exists=true" >> $GITHUB_OUTPUT
-            echo "Tag $TAG_NAME already exists in public repo"
+            echo "Release $TAG_NAME already exists in public repo"
 
             if [ "$FORCE_RELEASE" != "true" ]; then
               echo "should_skip=true" >> $GITHUB_OUTPUT
-              echo "Skipping release creation (tag exists and not forced)"
+              echo "Skipping release creation (release exists and not forced)"
             else
               echo "should_skip=false" >> $GITHUB_OUTPUT
               echo "Will force create release"
@@ -239,13 +238,13 @@ jobs:
           else
             echo "exists=false" >> $GITHUB_OUTPUT
             echo "should_skip=false" >> $GITHUB_OUTPUT
-            echo "Tag $TAG_NAME does not exist, will create release"
+            echo "Release $TAG_NAME does not exist, will create release"
           fi
 
       - name: Download release assets
         if: steps.check-existing.outputs.should_skip != 'true'
         env:
-          PRIVATE_TOKEN: ${{ secrets[env.PRIVATE_PAT_NAME] }}
+          PRIVATE_TOKEN: ${{ secrets.PLUGIN_PAT }}
         run: |
           mkdir -p release_assets
 
@@ -291,24 +290,14 @@ jobs:
           echo "Downloaded assets:"
           ls -la release_assets/
 
-      - name: Create/update public release
-        if: steps.check-existing.outputs.should_skip != 'true'
+      - name: Remove existing release if present
+        if: steps.check-existing.outputs.should_skip != 'true' && steps.check-existing.outputs.exists == 'true'
         env:
-          TAG_NAME: ${{ steps.get-private-release.outputs.tag_name }}
-          TAG_EXISTS: ${{ steps.check-existing.outputs.exists }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Configure git
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-
-          # Create tag if it doesn't exist
-          if [ "$TAG_EXISTS" != "true" ]; then
-            echo "Creating new tag $TAG_NAME"
-            git tag $TAG_NAME -m "Mirrored release from private repo"
-            git push origin $TAG_NAME
-          else
-            echo "Tag $TAG_NAME already exists, will update existing release"
-          fi
+          TAG_NAME="${{ steps.get-private-release.outputs.tag_name }}"
+          echo "Removing existing release $TAG_NAME..."
+          gh release delete "$TAG_NAME" --repo ${{ github.repository }} --yes --cleanup-tag
 
       - name: Upload release to public repo
         if: steps.check-existing.outputs.should_skip != 'true'
@@ -322,8 +311,46 @@ jobs:
           draft: ${{ steps.get-private-release.outputs.is_draft == 'true' }}
           prerelease: ${{ steps.get-private-release.outputs.is_prerelease == 'true' }}
           generate_release_notes: false
-          make_latest: true
+          make_latest: false
           fail_on_unmatched_files: false
+
+      - name: Ensure highest semver release is marked as latest
+        if: steps.check-existing.outputs.should_skip != 'true' && steps.get-private-release.outputs.is_prerelease != 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Find the highest semver stable release across ALL releases and mark it as latest.
+          # This is safe with concurrent workflow runs — the last run to finish always
+          # sees all created releases and sets the correct one.
+          HIGHEST_TAG=""
+          HIGHEST_ID=""
+          HIGHEST_MAJOR=0; HIGHEST_MINOR=0; HIGHEST_PATCH=0
+
+          RELEASES=$(gh api "repos/${{ github.repository }}/releases" --paginate \
+            --jq '.[] | select(.prerelease == false and .draft == false) | "\(.tag_name)|\(.id)"')
+
+          while IFS='|' read -r tag id; do
+            [ -z "$tag" ] && continue
+            VER="${tag#v}"; VER="${VER%%-*}"
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$VER"
+            MAJOR=${MAJOR:-0}; MINOR=${MINOR:-0}; PATCH=${PATCH:-0}
+
+            if [ "$MAJOR" -gt "$HIGHEST_MAJOR" ] || \
+               ([ "$MAJOR" -eq "$HIGHEST_MAJOR" ] && [ "$MINOR" -gt "$HIGHEST_MINOR" ]) || \
+               ([ "$MAJOR" -eq "$HIGHEST_MAJOR" ] && [ "$MINOR" -eq "$HIGHEST_MINOR" ] && [ "$PATCH" -gt "$HIGHEST_PATCH" ]); then
+              HIGHEST_TAG="$tag"
+              HIGHEST_ID="$id"
+              HIGHEST_MAJOR=$MAJOR; HIGHEST_MINOR=$MINOR; HIGHEST_PATCH=$PATCH
+            fi
+          done <<< "$RELEASES"
+
+          if [ -n "$HIGHEST_ID" ]; then
+            gh api "repos/${{ github.repository }}/releases/${HIGHEST_ID}" \
+              --method PATCH -f make_latest=true
+            echo "Ensured $HIGHEST_TAG (id=$HIGHEST_ID) is marked as latest"
+          else
+            echo "No stable releases found"
+          fi
 
       - name: Summary
         if: steps.check-existing.outputs.should_skip != 'true'
