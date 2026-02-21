@@ -5,6 +5,7 @@ name: Mirror Releases from Private Repo
 # ============================================================================
 env:
   PRIVATE_REPO: "WigglyMuffin/Ambivalence"
+  PRIVATE_PAT_NAME: "PLUGIN_PAT"
 
 on:
   repository_dispatch:
@@ -46,7 +47,7 @@ jobs:
       - name: Get latest release from private repo
         id: get-private-latest
         env:
-          PRIVATE_TOKEN: ${{ secrets.PLUGIN_PAT }}
+          PRIVATE_TOKEN: ${{ secrets[env.PRIVATE_PAT_NAME] }}
         run: |
           RELEASE_URL="https://api.github.com/repos/${{ env.PRIVATE_REPO }}/releases/latest"
 
@@ -143,13 +144,13 @@ jobs:
       - name: Get release from private repo
         id: get-private-release
         env:
-          PRIVATE_TOKEN: ${{ secrets.PLUGIN_PAT }}
+          PRIVATE_TOKEN: ${{ secrets[env.PRIVATE_PAT_NAME] }}
           RELEASE_TAG: ${{ github.event.inputs.release_tag || github.event.client_payload.release_tag || '' }}
         run: |
           # Check if token is available
           if [ -z "$PRIVATE_TOKEN" ]; then
-            echo "Error: PLUGIN_PAT secret is not set"
-            echo "Please add the PAT as an organization secret named PLUGIN_PAT"
+            echo "Error: ${{ env.PRIVATE_PAT_NAME }} secret is not set"
+            echo "Please add the PAT as a repository secret named ${{ env.PRIVATE_PAT_NAME }}"
             exit 1
           fi
 
@@ -171,7 +172,7 @@ jobs:
 
           # Check HTTP status
           if [ "$HTTP_STATUS" -eq 401 ]; then
-            echo "Error: Authentication failed. Check your PLUGIN_PAT"
+            echo "Error: Authentication failed. Check your ${{ env.PRIVATE_PAT_NAME }}"
             exit 1
           elif [ "$HTTP_STATUS" -eq 404 ]; then
             echo "Error: Repository or release not found"
@@ -244,7 +245,7 @@ jobs:
       - name: Download release assets
         if: steps.check-existing.outputs.should_skip != 'true'
         env:
-          PRIVATE_TOKEN: ${{ secrets.PLUGIN_PAT }}
+          PRIVATE_TOKEN: ${{ secrets[env.PRIVATE_PAT_NAME] }}
         run: |
           mkdir -p release_assets
 
