@@ -312,7 +312,7 @@ jobs:
           draft: ${{ steps.get-private-release.outputs.is_draft == 'true' }}
           prerelease: ${{ steps.get-private-release.outputs.is_prerelease == 'true' }}
           generate_release_notes: false
-          make_latest: false
+          make_latest: "false"
           fail_on_unmatched_files: false
 
       - name: Ensure highest semver release is marked as latest
@@ -347,8 +347,14 @@ jobs:
 
           if [ -n "$HIGHEST_ID" ]; then
             gh api "repos/${{ github.repository }}/releases/${HIGHEST_ID}" \
-              --method PATCH -f make_latest=true
-            echo "Ensured $HIGHEST_TAG (id=$HIGHEST_ID) is marked as latest"
+              --method PATCH -f make_latest=true --silent
+            # Verify the latest release is now correct
+            ACTUAL_LATEST=$(gh api "repos/${{ github.repository }}/releases/latest" --jq '.tag_name')
+            if [ "$ACTUAL_LATEST" = "$HIGHEST_TAG" ]; then
+              echo "Verified $HIGHEST_TAG is marked as latest"
+            else
+              echo "::warning::Expected $HIGHEST_TAG as latest but got $ACTUAL_LATEST"
+            fi
           else
             echo "No stable releases found"
           fi
