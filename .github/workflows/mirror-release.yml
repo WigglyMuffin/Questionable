@@ -315,48 +315,40 @@ jobs:
           make_latest: "false"
           fail_on_unmatched_files: false
 
-      - name: Ensure highest semver release is marked as latest
+      - name: Mirror latest flag from private repo
         if: steps.check-existing.outputs.should_skip != 'true' && steps.get-private-release.outputs.is_prerelease != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRIVATE_TOKEN: ${{ secrets[env.PRIVATE_PAT_NAME] }}
         run: |
-          # Find the highest semver stable release across ALL releases and mark it as latest.
-          # This is safe with concurrent workflow runs — the last run to finish always
-          # sees all created releases and sets the correct one.
-          HIGHEST_TAG=""
-          HIGHEST_ID=""
-          HIGHEST_MAJOR=0; HIGHEST_MINOR=0; HIGHEST_PATCH=0
+          # The private repo is the source of truth for which release is "latest".
+          # Mirror that flag here instead of doing independent semver comparison,
+          # which can disagree when versioning schemes change over time.
+          PRIVATE_LATEST_TAG=$(curl -s -H "Authorization: token $PRIVATE_TOKEN" \
+            "https://api.github.com/repos/${{ env.PRIVATE_REPO }}/releases/latest" | jq -r '.tag_name // ""')
 
-          RELEASES=$(gh api "repos/${{ github.repository }}/releases" --paginate \
-            --jq '.[] | select(.prerelease == false and .draft == false) | "\(.tag_name)|\(.id)"')
+          if [ -z "$PRIVATE_LATEST_TAG" ]; then
+            echo "Could not determine private repo's latest release, skipping latest flag update"
+            exit 0
+          fi
 
-          while IFS='|' read -r tag id; do
-            [ -z "$tag" ] && continue
-            VER="${tag#v}"; VER="${VER%%-*}"
-            IFS='.' read -r MAJOR MINOR PATCH <<< "$VER"
-            MAJOR=${MAJOR:-0}; MINOR=${MINOR:-0}; PATCH=${PATCH:-0}
+          echo "Private repo latest release: $PRIVATE_LATEST_TAG"
 
-            if [ "$MAJOR" -gt "$HIGHEST_MAJOR" ] || \
-               ([ "$MAJOR" -eq "$HIGHEST_MAJOR" ] && [ "$MINOR" -gt "$HIGHEST_MINOR" ]) || \
-               ([ "$MAJOR" -eq "$HIGHEST_MAJOR" ] && [ "$MINOR" -eq "$HIGHEST_MINOR" ] && [ "$PATCH" -gt "$HIGHEST_PATCH" ]); then
-              HIGHEST_TAG="$tag"
-              HIGHEST_ID="$id"
-              HIGHEST_MAJOR=$MAJOR; HIGHEST_MINOR=$MINOR; HIGHEST_PATCH=$PATCH
-            fi
-          done <<< "$RELEASES"
+          # Find the matching release on the public repo and mark it as latest
+          PUBLIC_RELEASE_ID=$(gh api "repos/${{ github.repository }}/releases/tags/${PRIVATE_LATEST_TAG}" \
+            --jq '.id' 2>/dev/null || echo "")
 
-          if [ -n "$HIGHEST_ID" ]; then
-            gh api "repos/${{ github.repository }}/releases/${HIGHEST_ID}" \
+          if [ -n "$PUBLIC_RELEASE_ID" ]; then
+            gh api "repos/${{ github.repository }}/releases/${PUBLIC_RELEASE_ID}" \
               --method PATCH -f make_latest=true --silent
-            # Verify the latest release is now correct
             ACTUAL_LATEST=$(gh api "repos/${{ github.repository }}/releases/latest" --jq '.tag_name')
-            if [ "$ACTUAL_LATEST" = "$HIGHEST_TAG" ]; then
-              echo "Verified $HIGHEST_TAG is marked as latest"
+            if [ "$ACTUAL_LATEST" = "$PRIVATE_LATEST_TAG" ]; then
+              echo "Verified $PRIVATE_LATEST_TAG is marked as latest (matches private repo)"
             else
-              echo "::warning::Expected $HIGHEST_TAG as latest but got $ACTUAL_LATEST"
+              echo "::warning::Expected $PRIVATE_LATEST_TAG as latest but got $ACTUAL_LATEST"
             fi
           else
-            echo "No stable releases found"
+            echo "::warning::Private repo latest ($PRIVATE_LATEST_TAG) not found on public repo"
           fi
 
       - name: Summary

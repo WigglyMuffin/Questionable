@@ -5,6 +5,8 @@ name: Promote Release (Public Mirror)
 # ============================================================================
 env:
   PLUGIN_NAME: "Questionable"
+  PRIVATE_REPO: "WigglyMuffin/Ambivalence"
+  PRIVATE_PAT_NAME: "PLUGIN_PAT"
 
 # Triggered by Ambivalence via repository_dispatch after promoting a testing release
 on:
@@ -39,21 +41,18 @@ jobs:
           fi
 
           # Determine if this version should be marked as Latest
+          # Use the private repo as source of truth instead of local semver comparison
           MAKE_LATEST="true"
-          CURRENT_LATEST=$(gh api "repos/${{ github.repository }}/releases/latest" --jq '.tag_name // ""' 2>/dev/null || echo "")
-          if [ -n "$CURRENT_LATEST" ]; then
-            NEW_VER="${TAG#v}"; NEW_VER="${NEW_VER%%-*}"
-            CUR_VER="${CURRENT_LATEST#v}"; CUR_VER="${CUR_VER%%-*}"
-            IFS='.' read -r NEW_MAJOR NEW_MINOR NEW_PATCH <<< "$NEW_VER"
-            IFS='.' read -r CUR_MAJOR CUR_MINOR CUR_PATCH <<< "$CUR_VER"
-            NEW_MAJOR=${NEW_MAJOR:-0}; NEW_MINOR=${NEW_MINOR:-0}; NEW_PATCH=${NEW_PATCH:-0}
-            CUR_MAJOR=${CUR_MAJOR:-0}; CUR_MINOR=${CUR_MINOR:-0}; CUR_PATCH=${CUR_PATCH:-0}
-            if [ "$NEW_MAJOR" -lt "$CUR_MAJOR" ] || \
-               ([ "$NEW_MAJOR" -eq "$CUR_MAJOR" ] && [ "$NEW_MINOR" -lt "$CUR_MINOR" ]) || \
-               ([ "$NEW_MAJOR" -eq "$CUR_MAJOR" ] && [ "$NEW_MINOR" -eq "$CUR_MINOR" ] && [ "$NEW_PATCH" -le "$CUR_PATCH" ]); then
+          PRIVATE_TOKEN="${{ secrets[env.PRIVATE_PAT_NAME] }}"
+          if [ -n "$PRIVATE_TOKEN" ]; then
+            PRIVATE_LATEST=$(curl -s -H "Authorization: token $PRIVATE_TOKEN" \
+              "https://api.github.com/repos/${{ env.PRIVATE_REPO }}/releases/latest" | jq -r '.tag_name // ""')
+            if [ -n "$PRIVATE_LATEST" ] && [ "$TAG" != "$PRIVATE_LATEST" ]; then
               MAKE_LATEST="false"
-              echo "Version $TAG is not higher than current latest $CURRENT_LATEST, will not mark as latest"
+              echo "Version $TAG is not the latest on private repo ($PRIVATE_LATEST), will not mark as latest"
             fi
+          else
+            echo "No private repo PAT available, defaulting to make_latest=true"
           fi
 
           # Flip the prerelease flag and update title/notes
