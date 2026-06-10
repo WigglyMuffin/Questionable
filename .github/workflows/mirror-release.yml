@@ -38,12 +38,6 @@ jobs:
       latest-private-tag: ${{ steps.get-private-latest.outputs.tag_name }}
       should-mirror: ${{ steps.compare-releases.outputs.should-mirror }}
     steps:
-      - name: Checkout public repository
-        uses: actions/checkout@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0
-
       - name: Get latest release from private repo
         id: get-private-latest
         env:
@@ -109,6 +103,14 @@ jobs:
             echo "has-new-release=true" >> $GITHUB_OUTPUT
             echo "should-mirror=true" >> $GITHUB_OUTPUT
             echo "Force release enabled - will mirror latest"
+            exit 0
+          fi
+
+          # If new-release checking is disabled, nothing to do
+          if [ "$CHECK_FOR_NEW" != "true" ]; then
+            echo "has-new-release=false" >> $GITHUB_OUTPUT
+            echo "should-mirror=false" >> $GITHUB_OUTPUT
+            echo "check_for_new is disabled - not checking for new releases"
             exit 0
           fi
 
@@ -256,7 +258,10 @@ jobs:
             exit 0
           fi
 
-          # Download each asset using GitHub API for private repos
+          # Download each asset using GitHub API for private repos.
+          # -f is required: without it, HTTP errors write the JSON error body
+          # into the asset file and it would be published as a corrupt asset.
+          FAILED=0
           while IFS='|' read -r asset_name asset_id browser_url; do
             if [ -n "$asset_name" ] && [ -n "$asset_id" ]; then
               echo "Downloading $asset_name (ID: $asset_id)..."
@@ -264,29 +269,31 @@ jobs:
               # Use GitHub API to download private repo assets
               API_URL="https://api.github.com/repos/${{ env.PRIVATE_REPO }}/releases/assets/$asset_id"
 
-              curl -L -H "Authorization: token $PRIVATE_TOKEN" \
+              if curl -sfL -H "Authorization: token $PRIVATE_TOKEN" \
                    -H "Accept: application/octet-stream" \
                    -o "release_assets/$asset_name" \
-                   "$API_URL"
-
-              if [ $? -eq 0 ] && [ -f "release_assets/$asset_name" ] && [ -s "release_assets/$asset_name" ]; then
+                   "$API_URL" && [ -s "release_assets/$asset_name" ]; then
                 FILE_SIZE=$(du -h "release_assets/$asset_name" | cut -f1)
                 echo "Successfully downloaded $asset_name ($FILE_SIZE)"
               else
                 echo "Failed to download $asset_name, trying fallback..."
-                curl -L -H "Authorization: token $PRIVATE_TOKEN" \
+                if curl -sfL -H "Authorization: token $PRIVATE_TOKEN" \
                      -o "release_assets/$asset_name" \
-                     "$browser_url"
-
-                if [ $? -eq 0 ] && [ -s "release_assets/$asset_name" ]; then
+                     "$browser_url" && [ -s "release_assets/$asset_name" ]; then
                   FILE_SIZE=$(du -h "release_assets/$asset_name" | cut -f1)
                   echo "Successfully downloaded $asset_name using fallback method ($FILE_SIZE)"
                 else
-                  echo "Both download methods failed for $asset_name"
+                  echo "::error::Both download methods failed for $asset_name"
+                  FAILED=1
                 fi
               fi
             fi
           done < assets.txt
+
+          if [ "$FAILED" -eq 1 ]; then
+            echo "::error::One or more assets failed to download - aborting to avoid publishing an incomplete release"
+            exit 1
+          fi
 
           echo "Downloaded assets:"
           ls -la release_assets/
@@ -295,25 +302,35 @@ jobs:
         if: steps.check-existing.outputs.should_skip != 'true' && steps.check-existing.outputs.exists == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ steps.get-private-release.outputs.tag_name }}
         run: |
-          TAG_NAME="${{ steps.get-private-release.outputs.tag_name }}"
           echo "Removing existing release $TAG_NAME..."
           gh release delete "$TAG_NAME" --repo ${{ github.repository }} --yes --cleanup-tag
 
-      - name: Upload release to public repo
+      - name: Create mirrored release
         if: steps.check-existing.outputs.should_skip != 'true'
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ steps.get-private-release.outputs.tag_name }}
-          name: ${{ steps.get-private-release.outputs.release_name }}
-          body_path: release_body.txt
-          files: |
-            release_assets/*
-          draft: ${{ steps.get-private-release.outputs.is_draft == 'true' }}
-          prerelease: ${{ steps.get-private-release.outputs.is_prerelease == 'true' }}
-          generate_release_notes: false
-          make_latest: "false"
-          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ steps.get-private-release.outputs.tag_name }}
+          RELEASE_NAME: ${{ steps.get-private-release.outputs.release_name }}
+          IS_PRERELEASE: ${{ steps.get-private-release.outputs.is_prerelease }}
+          IS_DRAFT: ${{ steps.get-private-release.outputs.is_draft }}
+        run: |
+          FLAGS="--latest=false"
+          [ "$IS_PRERELEASE" = "true" ] && FLAGS="$FLAGS --prerelease"
+          [ "$IS_DRAFT" = "true" ] && FLAGS="$FLAGS --draft"
+
+          ASSETS=""
+          for f in release_assets/*; do
+            [ -f "$f" ] && [ "$(basename "$f")" != ".gitkeep" ] && ASSETS="$ASSETS $f"
+          done
+
+          gh release create "$TAG_NAME" \
+            --title "$RELEASE_NAME" \
+            --notes-file release_body.txt \
+            --repo ${{ github.repository }} \
+            $FLAGS \
+            $ASSETS
 
       - name: Mirror latest flag from private repo
         if: steps.check-existing.outputs.should_skip != 'true' && steps.get-private-release.outputs.is_prerelease != 'true'
@@ -353,8 +370,11 @@ jobs:
 
       - name: Summary
         if: steps.check-existing.outputs.should_skip != 'true'
+        env:
+          TAG_NAME: ${{ steps.get-private-release.outputs.tag_name }}
+          RELEASE_NAME: ${{ steps.get-private-release.outputs.release_name }}
         run: |
-          echo "Successfully mirrored release ${{ steps.get-private-release.outputs.tag_name }} from private repo"
-          echo "Release name: ${{ steps.get-private-release.outputs.release_name }}"
+          echo "Successfully mirrored release $TAG_NAME from private repo"
+          echo "Release name: $RELEASE_NAME"
           echo "Assets included:"
           ls -la release_assets/ | grep -v '^total'
