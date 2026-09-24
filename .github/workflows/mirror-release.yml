@@ -4,7 +4,7 @@ name: Mirror Releases from Private Repo
 # Plugin Configuration
 # ============================================================================
 env:
-  PRIVATE_REPO: "WigglyMuffin/Ambivalence"
+  PRIVATE_REPO: "WigglyMuffin/WigglyQuest"
   PRIVATE_PAT_NAME: "PLUGIN_PAT"
 
 on:
